@@ -79,7 +79,7 @@ export function TrialLab({ scorer, template, background, onClose, onChange, onPu
         </span>
         <div className="flex gap-1">
           {scorer.outputs.map((o) => (
-            <Tag key={o} tone="primary"><Mono>{o}</Mono>{dimensions.find((d) => d.key === o)?.name}</Tag>
+            <Tag key={o} tone="primary"><Mono>{o}</Mono>{dimensions.find((d) => d.key === o)?.name || o}</Tag>
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2">

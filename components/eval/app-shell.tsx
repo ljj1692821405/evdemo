@@ -12,6 +12,8 @@ import {
   Microscope,
   FileDown,
   Building2,
+  Cpu,
+  PenTool,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLines, useScope } from '@/lib/tenant-store'
@@ -25,7 +27,7 @@ function ScopeSwitcher() {
   return (
     <div className="flex flex-col gap-1.5 border-b border-sidebar-border px-3 py-3">
       <label className="flex flex-col gap-1">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-sidebar-foreground/50">产线</span>
+        <span className="text-[10px] font-medium uppercase tracking-wider text-sidebar-foreground/60">产线</span>
         <select className={selectCls} value={scope.line?.id ?? ''} onChange={(e) => scope.setLine(e.target.value)}>
           {lines.map((l) => (
             <option key={l.id} value={l.id}>{l.name}</option>
@@ -33,7 +35,7 @@ function ScopeSwitcher() {
         </select>
       </label>
       <label className="flex flex-col gap-1">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-sidebar-foreground/50">Agent</span>
+        <span className="text-[10px] font-medium uppercase tracking-wider text-sidebar-foreground/60">Agent</span>
         <select className={selectCls} value={scope.agent?.id ?? ''} onChange={(e) => scope.setAgent(e.target.value)} disabled={!scope.line?.agents.length}>
           {scope.line?.agents.length ? (
             scope.line.agents.map((a) => (
@@ -51,6 +53,7 @@ function ScopeSwitcher() {
 const nav = [
   { group: 'L0 平台', items: [
     { href: '/lines', label: '产线管理', icon: Building2 },
+    { href: '/capabilities', label: '其他评测能力', icon: Cpu },
   ] },
   { group: 'L1 资产', items: [
     { href: '/datasets', label: '数据集 / Case', icon: Database },
@@ -61,9 +64,10 @@ const nav = [
     { href: '/simulations', label: '仿真与快照', icon: Snowflake },
     { href: '/experiments', label: '实验与评测', icon: FlaskConical },
   ] },
-  { group: 'L5 消费', items: [
+  { group: 'L5 消费与对齐', items: [
     { href: '/dashboard', label: '数据看板', icon: Gauge },
     { href: '/review', label: '核对看板', icon: Microscope },
+    { href: '/annotation', label: '标注工作台', icon: PenTool },
     { href: '/export', label: '报告 / 导出', icon: FileDown },
   ] },
 ]
@@ -86,7 +90,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav aria-label="主导航" className="flex-1 overflow-y-auto px-2 py-3">
           {nav.map((g) => (
             <div key={g.group} className="mb-4">
-              <div className="px-2 pb-1.5 font-mono text-[10px] uppercase tracking-wider text-sidebar-foreground/50">{g.group}</div>
+              <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">{g.group}</div>
               <ul className="flex flex-col gap-0.5">
                 {g.items.map((item) => {
                   i += 1
