@@ -118,12 +118,9 @@ export function LinesView() {
               >
                 <span className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium">{l.name}</span>
-                  <Mono className="text-muted-foreground">{l.code}</Mono>
                 </span>
                 <span className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span>{l.agents.length} 个 Agent</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{l.owner || '—'}</span>
                 </span>
               </button>
             </li>
@@ -140,12 +137,6 @@ export function LinesView() {
           addLabel="接入 Agent"
           onAdd={line ? () => setAgentForm({ name: '', code: '', endpoint: '', protocol: 'HTTP', owner: line.owner }) : undefined}
         />
-        {line ? (
-          <div className="flex items-start justify-between gap-2 border-b px-4 py-2.5 text-xs text-muted-foreground">
-            <p className="text-pretty">{line.desc || '暂无描述'}</p>
-            <ConfirmDelete label={`产线 ${line.name}`} onConfirm={() => store.removeLine(line.id)} />
-          </div>
-        ) : null}
         {agentForm && line ? (
           <form
             className="flex flex-col gap-2 border-b bg-muted/40 p-3"
@@ -197,7 +188,6 @@ export function LinesView() {
                     <span className="text-sm font-medium">{a.name}</span>
                     {current ? <Tag tone="primary">当前作用域</Tag> : <Tag>{a.protocol}</Tag>}
                   </span>
-                  <Mono className="text-muted-foreground">{a.code}</Mono>
                   <span className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span>{a.models.length} 模型</span>
                     <span>{a.tasks.length} 任务</span>
