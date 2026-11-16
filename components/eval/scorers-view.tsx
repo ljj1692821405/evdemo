@@ -19,7 +19,7 @@ export function ScorersView() {
   const [dims, setDims] = useState(initialDims)
   const [list, setList] = useScorers()
   const dict = useFieldDict()
-  const [sel, setSel] = useState(initialScorers[3].id)
+  const [sel] = useState(initialScorers[3].id)
   const [trial, setTrial] = useState<Record<string, Trial>>({})
   const s = list.find((x) => x.id === sel)!
   const locked = s.status === 'published'
@@ -133,27 +133,6 @@ export function ScorersView() {
       </Panel>
 
       <div className="flex min-w-0 flex-col gap-4">
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {list.map((x) => (
-            <button
-              key={x.id}
-              type="button"
-              onClick={() => setSel(x.id)}
-              aria-current={x.id === sel ? 'true' : undefined}
-              className={cn('min-w-44 shrink-0 rounded-lg border bg-card p-3 text-left transition-colors', x.id === sel ? 'border-primary ring-2 ring-primary/15' : 'hover:border-input')}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">{x.name}</span>
-                {x.status === 'published' ? <Lock className="size-3.5 text-muted-foreground" aria-label="已发布" /> : null}
-              </div>
-              <div className="mt-1.5 flex items-center gap-1.5">
-                <Tag tone={x.status === 'published' ? 'pass' : 'neutral'}>{x.status}</Tag>
-                <Mono className="text-muted-foreground">v{x.version}</Mono>
-              </div>
-            </button>
-          ))}
-        </div>
-
         <Panel
           title={
             <span className="flex items-center gap-2">
