@@ -7,9 +7,9 @@ export default function CapabilitiesPage() {
   return (
     <div>
       <PageHeader
-        index={9}
+        index={1}
         title="其他评测能力"
-        meta="通用评测能力注册中心 · 文生图 / 图生视频 / 多模态等能力定义与契约"
+        back="/lines"
       />
       <CapabilitiesRegistryView />
     </div>

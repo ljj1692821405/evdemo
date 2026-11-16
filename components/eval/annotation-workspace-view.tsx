@@ -2,27 +2,18 @@
 
 import { useState } from 'react'
 import {
-  Sparkles,
   ChevronLeft,
   ChevronRight,
   Gavel,
-  CheckCircle2,
-  XCircle,
-  HelpCircle,
-  Clock,
-  Send,
-  Eye,
   ImageIcon,
   Video,
   FileText,
   Sliders,
   Check,
-  RotateCcw,
   Layers,
-  ZoomIn,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Panel, Tag, Mono, Btn, VerdictBadge } from '@/components/eval/primitives'
+import { Tag, Mono, Btn, VerdictBadge } from '@/components/eval/primitives'
 import { useAnnotationStore, type AnnotationItem } from '@/lib/annotation-store'
 import { type Verdict } from '@/lib/mock-data'
 
@@ -40,20 +31,19 @@ export function AnnotationWorkspaceView() {
 
   return (
     <div className="flex flex-col gap-4 p-6">
-      {/* 顶部统计与模式说明 */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card px-5 py-3.5">
+      {/* 顶部统计与筛选 */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card px-5 py-3">
         <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Sparkles className="size-5" />
+          <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Gavel className="size-4" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-foreground">多模态人工标注工作台</h2>
-              <Tag tone="primary">统一评测标准对齐</Tag>
+            <h2 className="text-sm font-bold text-foreground">人工标注工作台</h2>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              <span>待核验 <strong className="font-mono text-foreground">{filteredItems.length}</strong> 条</span>
+              <span>·</span>
+              <span>文生图 / 图生视频多模态样本</span>
             </div>
-            <p className="text-xs text-muted-foreground">
-              根据导入能力的 Input Schema 与评分规则动态生成标注界面，人工评分将作为黄金 Ground Truth 与 LLM/VLM 裁判进行一致率核验。
-            </p>
           </div>
         </div>
 
@@ -125,7 +115,7 @@ export function AnnotationWorkspaceView() {
           </div>
         </div>
 
-        {/* 中间多模态动态展示区 (Dynamic Multi-Modal Viewer) */}
+        {/* 中间多模态动态展示区 */}
         <div className="flex flex-col gap-4">
           <div className="rounded-xl border bg-card p-5">
             {/* 顶栏控制 */}
@@ -134,7 +124,7 @@ export function AnnotationWorkspaceView() {
                 <span className="font-mono font-bold text-sm text-foreground">{currentItem.caseId}</span>
                 <span className="text-xs font-medium text-muted-foreground">{currentItem.taskName}</span>
                 <Tag tone={currentItem.taskType === 't2i' ? 'primary' : 'pass'} className="text-[10px] whitespace-nowrap">
-                  {currentItem.taskType === 't2i' ? '文生图 (T2I)' : '图生视频 (I2V)'}
+                  {currentItem.taskType === 't2i' ? '文生图' : '图生视频'}
                 </Tag>
               </div>
 
@@ -169,7 +159,7 @@ export function AnnotationWorkspaceView() {
                   <div>
                     <span className="font-semibold text-foreground flex items-center gap-1.5">
                       <FileText className="size-3.5 text-primary" />
-                      正向提示词 (Prompt):
+                      Prompt:
                     </span>
                     <p className="mt-1 text-foreground leading-relaxed bg-background/80 p-2.5 rounded border border-border/60">
                       {currentItem.inputs.prompt}
@@ -177,7 +167,7 @@ export function AnnotationWorkspaceView() {
                   </div>
                   {currentItem.inputs.negative_prompt && (
                     <div>
-                      <span className="font-medium text-muted-foreground">负向提示词 (Negative Prompt):</span>
+                      <span className="font-medium text-muted-foreground">Negative Prompt:</span>
                       <p className="mt-0.5 text-muted-foreground text-[11px] bg-background/50 p-2 rounded">
                         {currentItem.inputs.negative_prompt}
                       </p>
@@ -192,16 +182,15 @@ export function AnnotationWorkspaceView() {
                     <div className="flex items-center justify-between text-xs font-semibold text-foreground">
                       <span className="flex items-center gap-1.5">
                         <ImageIcon className="size-4 text-primary" />
-                        模型生成图片 (Generated Image)
+                        生成图片 (Generated Image)
                       </span>
-                      <Tag tone="primary">评测对象</Tag>
                     </div>
                     <div className="relative aspect-square w-full overflow-hidden rounded-md border bg-black/5 flex items-center justify-center">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={currentItem.inputs.generated_image}
-                        alt="模型生成图片"
-                        className="h-full w-full object-cover transition-transform hover:scale-105"
+                        alt="生成图片"
+                        className="h-full w-full object-cover"
                       />
                     </div>
                   </div>
@@ -212,25 +201,19 @@ export function AnnotationWorkspaceView() {
                       <div className="flex items-center justify-between text-xs font-semibold text-foreground">
                         <span className="flex items-center gap-1.5">
                           <Layers className="size-4 text-muted-foreground" />
-                          参考图 / 角色垫图 (Reference Image)
+                          参考图 (Reference Image)
                         </span>
-                        <Tag tone="neutral">输入基准</Tag>
                       </div>
                       <div className="relative aspect-square w-full overflow-hidden rounded-md border bg-black/5 flex items-center justify-center">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={currentItem.inputs.reference_image}
                           alt="参考图"
-                          className="h-full w-full object-cover transition-transform hover:scale-105"
+                          className="h-full w-full object-cover"
                         />
                       </div>
                     </div>
-                  ) : (
-                    <div className="flex flex-col justify-center items-center rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
-                      <ImageIcon className="size-8 text-muted-foreground/40 mb-2" />
-                      该 Case 为纯文本生图，无垫图参考
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             )}
@@ -243,10 +226,10 @@ export function AnnotationWorkspaceView() {
                   <div>
                     <span className="font-semibold text-foreground flex items-center gap-1.5">
                       <Sliders className="size-3.5 text-pass" />
-                      运镜与动作指令 (Motion Prompt):
+                      Motion Prompt:
                     </span>
                     <p className="mt-1 text-foreground leading-relaxed bg-background/80 p-2.5 rounded border border-border/60">
-                      {currentItem.inputs.motion_prompt || '无特定运镜要求，自然运动'}
+                      {currentItem.inputs.motion_prompt || '自然运动'}
                     </p>
                   </div>
                 </div>
@@ -258,15 +241,14 @@ export function AnnotationWorkspaceView() {
                     <div className="flex items-center justify-between text-xs font-semibold text-foreground">
                       <span className="flex items-center gap-1.5">
                         <ImageIcon className="size-4 text-muted-foreground" />
-                        首帧起始图 (First Frame)
+                        首帧 (First Frame)
                       </span>
-                      <Tag tone="neutral">输入起始点</Tag>
                     </div>
                     <div className="relative aspect-video w-full overflow-hidden rounded-md border bg-black/5 flex items-center justify-center">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={currentItem.inputs.first_frame}
-                        alt="首帧起始图"
+                        alt="首帧图"
                         className="h-full w-full object-cover"
                       />
                     </div>
@@ -277,9 +259,8 @@ export function AnnotationWorkspaceView() {
                     <div className="flex items-center justify-between text-xs font-semibold text-foreground">
                       <span className="flex items-center gap-1.5">
                         <Video className="size-4 text-pass" />
-                        生成视频播放 (Generated Video)
+                        生成视频 ({currentItem.inputs.target_duration}s)
                       </span>
-                      <Tag tone="pass">评测对象 ({currentItem.inputs.target_duration}s)</Tag>
                     </div>
                     <div className="relative aspect-video w-full overflow-hidden rounded-md border bg-black flex items-center justify-center">
                       <video
@@ -298,15 +279,15 @@ export function AnnotationWorkspaceView() {
           </div>
         </div>
 
-        {/* 右侧评分配置与判定面板 (Scoring & Alignment Panel) */}
+        {/* 右侧评分配置与判定面板 */}
         <div className="flex flex-col gap-4">
           <div className="rounded-xl border bg-card p-4 space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <div className="flex items-center gap-1.5">
                 <Gavel className="size-4 text-primary" />
-                <h3 className="text-sm font-bold text-foreground">多维度人工判定</h3>
+                <h3 className="text-sm font-bold text-foreground">人工判定</h3>
               </div>
-              <Tag tone="neutral">1~5 分制</Tag>
+              <Tag tone="neutral">1~5 分</Tag>
             </div>
 
             {/* 遍历维度打分 */}
@@ -317,29 +298,29 @@ export function AnnotationWorkspaceView() {
                 const isConflict = humanVal && humanVal.verdict !== judgeVal.verdict
 
                 return (
-                  <div key={dimKey} className="rounded-lg border bg-muted/20 p-3.5 space-y-2.5">
+                  <div key={dimKey} className="rounded-lg border bg-muted/20 p-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="font-semibold text-xs text-foreground">{getDimName(dimKey)}</div>
                         <span className="font-mono text-[10px] text-muted-foreground">{dimKey}</span>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Tag tone="neutral" className="text-[10px]">裁判: {judgeVal.score}分</Tag>
+                        <Tag tone="neutral" className="text-[10px]">裁判 {judgeVal.score}分</Tag>
                         <VerdictBadge verdict={judgeVal.verdict} className="text-[10px]" />
                       </div>
                     </div>
 
-                    {/* 裁判模型分析理由 */}
+                    {/* 裁判模型理由 */}
                     <div className="rounded bg-background p-2 text-[11px] text-muted-foreground border border-border/60 leading-relaxed">
-                      <span className="font-medium text-primary">裁判理由 ({judgeVal.model.split('/')[1]}): </span>
+                      <span className="font-medium text-primary">裁判理由: </span>
                       {judgeVal.reason}
                     </div>
 
                     {/* 人工打分 1~5 按钮组 */}
                     <div className="pt-1">
-                      <div className="text-[11px] font-medium text-foreground mb-1.5 flex items-center justify-between">
-                        <span>人工核定评分:</span>
-                        {isConflict ? <Tag tone="warn" className="text-[9px]">存在裁判分歧</Tag> : null}
+                      <div className="text-[11px] font-medium text-foreground mb-1 flex items-center justify-between">
+                        <span>人工核定:</span>
+                        {isConflict ? <Tag tone="warn" className="text-[9px]">存在分歧</Tag> : null}
                       </div>
                       <div className="grid grid-cols-5 gap-1">
                         {[1, 2, 3, 4, 5].map((score) => {
@@ -380,17 +361,17 @@ export function AnnotationWorkspaceView() {
 
             {/* 备注与提交 */}
             <div className="border-t pt-3 space-y-2">
-              <label className="text-xs font-medium text-foreground block">人工审核备注</label>
+              <label className="text-xs font-medium text-foreground block">审核备注</label>
               <textarea
                 rows={2}
-                placeholder="记录质检归因、异常特征或 Prompt 优化建议..."
+                placeholder="记录归因或修改建议"
                 value={currentItem.reviewNote || ''}
                 onChange={(e) => updateItemNote(currentItem.id, e.target.value)}
                 className="w-full rounded border border-input bg-background p-2 text-xs focus-visible:outline-2 focus-visible:outline-ring"
               />
               <div className="flex items-center justify-between pt-1">
                 <span className="text-[11px] text-muted-foreground">
-                  已完成 {Object.keys(currentItem.humanScores).length} / {Object.keys(currentItem.judgeResults).length} 项
+                  已完成 {Object.keys(currentItem.humanScores).length}/{Object.keys(currentItem.judgeResults).length}
                 </span>
                 <Btn
                   size="sm"

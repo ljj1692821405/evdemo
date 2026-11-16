@@ -11,11 +11,8 @@ import {
   X,
   Braces,
   FlaskConical,
-  Sparkles,
   Download,
-  Boxes,
   Cpu,
-  Layers,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dimensions as initialDims, scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
@@ -74,16 +71,12 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
 
   const [lab, setLab] = useState(false)
 
-  // 处理能力导入完成回调
   const handleImportComplete = (newScorer: Scorer, newDims: Dimension[]) => {
-    // 1. 添加并去重维度
     setDims((prevDims) => {
       const existingKeys = new Set(prevDims.map((d) => d.key))
       const toAdd = newDims.filter((d) => !existingKeys.has(d.key))
       return [...prevDims, ...toAdd]
     })
-
-    // 2. 添加评分器并选中
     setList((prevList) => [newScorer, ...prevList])
     setSel(newScorer.id)
   }
@@ -104,32 +97,26 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
 
   return (
     <div className="flex flex-col gap-4 p-6">
-      {/* 顶部操作条：新增「导入评测能力」强引导 */}
+      {/* 顶部操作条：精炼无废话 */}
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Sparkles className="size-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-foreground">维度与评分器体系</h2>
-              <Tag tone="pass">支持通用能力插件导入</Tag>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              既保留现有 Agent 意图识别、工具选择、安全合规等维度，也可随时从能力库导入文生图、图生视频等通用多模态评测能力。
-            </p>
+        <div>
+          <h2 className="text-sm font-bold text-foreground">维度与评分器</h2>
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{dims.length} 维度</span>
+            <span>·</span>
+            <span>{list.length} 评分器</span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <Btn variant="primary" size="sm" onClick={() => setImportModalOpen(true)}>
             <Download className="size-3.5" />
-            导入评测能力 (Import Capability)
+            导入评测能力
           </Btn>
           <a href="/capabilities">
             <Btn variant="outline" size="sm">
               <Cpu className="size-3.5" />
-              查看能力注册库
+              能力库
             </Btn>
           </a>
         </div>
@@ -137,7 +124,7 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
 
       {/* 评分器列表切换快捷 Pill */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap mr-1">评分器切换:</span>
+        <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap mr-1">评分器:</span>
         {list.map((item) => (
           <button
             key={item.id}
@@ -160,14 +147,12 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px_1fr]">
         <Panel
-          title="维度注册表 (Dimensions)"
+          title="维度注册表"
           actions={
-            <div className="flex items-center gap-1">
-              <Btn size="sm" variant={adding ? 'ghost' : 'outline'} onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
-                {adding ? <X className="size-3.5" aria-hidden="true" /> : <Plus className="size-3.5" aria-hidden="true" />}
-                {adding ? '取消' : '新建维度'}
-              </Btn>
-            </div>
+            <Btn size="sm" variant={adding ? 'ghost' : 'outline'} onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
+              {adding ? <X className="size-3.5" aria-hidden="true" /> : <Plus className="size-3.5" aria-hidden="true" />}
+              {adding ? '取消' : '新建维度'}
+            </Btn>
           }
           bodyClassName="p-0"
         >

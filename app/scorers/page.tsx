@@ -7,7 +7,7 @@ export default async function ScorersPage({ searchParams }: { searchParams: Prom
   const { importCap } = await searchParams
   return (
     <div>
-      <PageHeader index={3} title="维度与评分器" back="/field-dict" meta="评测维度指标体系 · 评分器与导入通用评测能力" />
+      <PageHeader index={4} title="维度与评分器" back="/field-dict" />
       <ScorersView initialImportCapId={importCap} />
     </div>
   )

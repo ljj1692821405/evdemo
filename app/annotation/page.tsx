@@ -7,9 +7,9 @@ export default function AnnotationPage() {
   return (
     <div>
       <PageHeader
-        index={10}
+        index={8}
         title="标注工作台"
-        meta="多模态人工评测与标注 · 文生图 / 图生视频动态多模态校验与黄金集对齐"
+        back="/review"
       />
       <AnnotationWorkspaceView />
     </div>
