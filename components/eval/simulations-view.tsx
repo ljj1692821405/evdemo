@@ -23,7 +23,7 @@ export function SimulationsView() {
   const [dsId, setDsId] = useState(datasets[0].id)
   const [script, setScript] = useState(scripts[0])
   const [openJob, setOpenJob] = useState<string | null>('job_1102')
-  const [openSnap, setOpenSnap] = useState<string | null>('snap_0105')
+  const [openSnap, setOpenSnap] = useState<string | null>(null)
 
   const active = jobs.some((j) => j.status === 'running' || j.status === 'pending')
 
@@ -168,7 +168,7 @@ export function SimulationsView() {
                         disabled={!refs.length}
                         className="inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
                       >
-                        已被 <span className="font-semibold">{refs.length}</span> 个实验引用
+                        明细 <span className="font-semibold">{refs.length}</span>
                         <ChevronDown className={cn('size-3 transition-transform', open && 'rotate-180')} aria-hidden="true" />
                       </button>
                       <Tag className="py-1">执行 {runCount} 次</Tag>
