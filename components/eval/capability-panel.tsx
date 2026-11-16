@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowRight, Boxes, History, Lock, Plus, Puzzle, Wrench } from 'lucide-react'
+import { ArrowRight, Boxes, Plus, Puzzle, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   diffItems,
@@ -91,26 +91,6 @@ export function CapabilityPanel({ agentId, agentCode }: { agentId: string; agent
           </label>
         ) : null}
       </div>
-
-      {viewing ? (
-        <div
-          className={cn(
-            'flex flex-wrap items-center gap-2 border-b px-3 py-2 text-xs',
-            isCurrent ? 'bg-accent/40 text-accent-foreground' : 'bg-warn-soft text-warn',
-          )}
-        >
-          {isCurrent ? <Tag tone="primary">当前配置</Tag> : <Tag tone="warn"><History className="size-3" aria-hidden="true" />历史配置 · 只读</Tag>}
-          <span className="text-pretty">{viewing.note}</span>
-          <span className="text-muted-foreground">
-            {viewing.author} · {viewing.at}
-          </span>
-          {refCount(viewing.version) ? (
-            <span className="ml-auto flex items-center gap-1 text-muted-foreground">
-              <Lock className="size-3" aria-hidden="true" />被 {refCount(viewing.version)} 个评测快照引用
-            </span>
-          ) : null}
-        </div>
-      ) : null}
 
       <div role="tablist" aria-label="能力配置视图" className="flex gap-1 border-b px-2">
         {tabs.map((t) => (
