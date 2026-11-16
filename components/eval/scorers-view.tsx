@@ -19,7 +19,7 @@ export function ScorersView() {
   const [dims, setDims] = useState(initialDims)
   const [list, setList] = useScorers()
   const dict = useFieldDict()
-  const [sel] = useState(initialScorers[3].id)
+  const [sel, setSel] = useState(initialScorers[3].id)
   const [trial, setTrial] = useState<Record<string, Trial>>({})
   const s = list.find((x) => x.id === sel)!
   const locked = s.status === 'published'
@@ -103,10 +103,21 @@ export function ScorersView() {
           </thead>
           <tbody className="divide-y">
             {dims.map((d) => (
-              <tr key={d.key} className={cn(!d.enabled && 'text-muted-foreground')}>
+              <tr key={d.key} className={cn(!d.enabled && 'text-muted-foreground', s.outputs.includes(d.key) && 'bg-accent/50')}>
                 <Td><Mono>{d.key}</Mono></Td>
                 <Td>
-                  <div className="font-medium">{d.name}</div>
+                  <button
+                    type="button"
+                    disabled={!list.some((x) => x.outputs.includes(d.key))}
+                    aria-pressed={s.outputs.includes(d.key)}
+                    onClick={() => {
+                      const target = list.find((x) => x.outputs.includes(d.key))
+                      if (target) setSel(target.id)
+                    }}
+                    className="font-medium underline-offset-4 hover:underline disabled:no-underline disabled:opacity-50"
+                  >
+                    {d.name}
+                  </button>
                 </Td>
                 <Td>
                   <div className="flex flex-col gap-0.5 font-mono text-[11px] text-muted-foreground">
