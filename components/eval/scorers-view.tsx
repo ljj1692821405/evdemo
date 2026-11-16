@@ -1,11 +1,12 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Lock, Play, Upload, GitBranch, Check, Loader2, ShieldCheck, Plus, X, Braces } from 'lucide-react'
+import { Lock, Upload, GitBranch, Check, ShieldCheck, Plus, X, Braces, FlaskConical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dimensions as initialDims, fieldDict, scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
 import { Panel, Tag, Mono, Th, Td, Btn } from './primitives'
 import { PromptEditor, defaultPrompt, referencedVars, judgeModels } from './prompt-editor'
+import { TrialLab } from './trial-lab'
 
 type Trial = 'idle' | 'running' | 'passed'
 
@@ -48,10 +49,19 @@ export function ScorersView() {
   const update = (patch: Partial<Scorer>) => setList((l) => l.map((x) => (x.id === s.id ? { ...x, ...patch } : x)))
   const tokens = s.inputFields.reduce((sum, f) => sum + (fieldDict.find((d) => d.logicalName === f)?.avgTokens ?? 0), 0)
 
-  const runTrial = () => {
-    setTrial((m) => ({ ...m, [s.id]: 'running' }))
-    const id = s.id
-    setTimeout(() => setTrial((m) => ({ ...m, [id]: 'passed' })), 1200)
+  const [lab, setLab] = useState(false)
+
+  if (lab) {
+    return (
+      <TrialLab
+        scorer={s}
+        template={template}
+        onClose={() => setLab(false)}
+        onChange={update}
+        onPublish={() => update({ status: 'published' })}
+        onPassed={() => setTrial((m) => ({ ...m, [s.id]: 'passed' }))}
+      />
+    )
   }
 
   return (
@@ -274,13 +284,12 @@ export function ScorersView() {
                     <Tag tone="pass" className="gap-1"><ShieldCheck className="size-3" aria-hidden="true" />AST 门禁</Tag>
                     <Tag tone="pass">import ✓</Tag>
                     <Tag tone="pass">output_schema ✓</Tag>
-                    <Mono className="text-muted-foreground">case_0001 → 5.4 pass</Mono>
                   </div>
                 ) : null}
                 <div className="ml-auto flex gap-2">
-                  <Btn onClick={runTrial} disabled={t === 'running'}>
-                    {t === 'running' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
-                    试跑 1 条
+                  <Btn onClick={() => setLab(true)}>
+                    <FlaskConical className="size-4" aria-hidden="true" />
+                    试跑
                   </Btn>
                   <Btn variant="primary" disabled={t !== 'passed'} onClick={() => update({ status: 'published' })}>
                     <Upload className="size-4" aria-hidden="true" />发布
