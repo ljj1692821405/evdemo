@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import {
-  ArrowLeft, Play, Loader2, Search, Check, X, Equal, CircleSlash, Upload, Pencil, Gavel, Clock, Coins, ArrowDownUp, History, Camera,
+  ArrowLeft, Play, Loader2, Search, Check, X, Equal, CircleSlash, Upload, Pencil, Gavel, Clock, Coins, ArrowDownUp, History, Camera, UserRound, Braces,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dimensions, fieldDict, snapshots, type Scorer } from '@/lib/mock-data'
@@ -13,13 +13,14 @@ import { judgeModels, referencedVars } from './prompt-editor'
 type Props = {
   scorer: Scorer
   template: string
+  background: string
   onClose: () => void
   onChange: (patch: Partial<Scorer>) => void
   onPublish: () => void
   onPassed: () => void
 }
 
-export function TrialLab({ scorer, template, onClose, onChange, onPublish, onPassed }: Props) {
+export function TrialLab({ scorer, template, background, onClose, onChange, onPublish, onPassed }: Props) {
   const [snapId, setSnapId] = useState(snapshots[0].id)
   const units = useMemo(() => trialUnits(snapId), [snapId])
   const [sel, setSel] = useState(units[0]?.key)
@@ -176,14 +177,35 @@ export function TrialLab({ scorer, template, onClose, onChange, onPublish, onPas
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             {tab === 'prompt' && usesPrompt ? (
               editing ? (
-                <textarea
-                  aria-label="提示词"
-                  value={template}
-                  onChange={(e) => onChange({ promptTemplate: e.target.value })}
-                  className="h-full min-h-80 w-full resize-none rounded-lg border bg-card p-4 font-mono text-[13px] leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                />
+                <div className="flex h-full flex-col gap-3">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground"><UserRound className="size-3.5" aria-hidden="true" />背景</span>
+                    <textarea
+                      value={background}
+                      onChange={(e) => onChange({ background: e.target.value })}
+                      rows={3}
+                      className="w-full resize-y rounded-lg border bg-card p-3 text-[13px] leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    />
+                  </label>
+                  <label className="flex min-h-0 flex-1 flex-col gap-1.5">
+                    <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground"><Braces className="size-3.5" aria-hidden="true" />提示词</span>
+                    <textarea
+                      value={template}
+                      onChange={(e) => onChange({ promptTemplate: e.target.value })}
+                      className="min-h-72 w-full flex-1 resize-none rounded-lg border bg-card p-4 font-mono text-[13px] leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    />
+                  </label>
+                </div>
               ) : (
-                <RenderedPrompt template={template} values={values} bound={scorer.inputFields} />
+                <div className="flex flex-col gap-3">
+                  {background.trim() ? (
+                    <div className="flex gap-2.5 rounded-lg border bg-card p-4 text-[13px] leading-relaxed">
+                      <UserRound className="mt-0.5 size-4 shrink-0 text-primary" aria-label="背景" />
+                      <p className="whitespace-pre-wrap">{background}</p>
+                    </div>
+                  ) : null}
+                  <RenderedPrompt template={template} values={values} bound={scorer.inputFields} />
+                </div>
               )
             ) : (
               <FieldList fields={scorer.inputFields} values={values} />

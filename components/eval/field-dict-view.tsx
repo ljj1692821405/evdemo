@@ -58,7 +58,6 @@ export function FieldDictView() {
                       <Mono className="font-semibold">{f.logicalName}</Mono>
                       {bad ? <AlertOctagon className="size-3.5 text-fail" aria-label="含非法路径" /> : null}
                     </div>
-                    <div className="text-xs text-muted-foreground">{f.description}</div>
                   </Td>
                   <Td>
                     <ol className="flex flex-col gap-1">

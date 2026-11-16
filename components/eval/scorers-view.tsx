@@ -5,7 +5,7 @@ import { Lock, Upload, GitBranch, Check, ShieldCheck, Plus, X, Braces, FlaskConi
 import { cn } from '@/lib/utils'
 import { dimensions as initialDims, fieldDict, scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
 import { Panel, Tag, Mono, Th, Td, Btn } from './primitives'
-import { PromptEditor, defaultPrompt, referencedVars, judgeModels } from './prompt-editor'
+import { PromptEditor, defaultPrompt, defaultBackground, referencedVars, judgeModels } from './prompt-editor'
 import { TrialLab } from './trial-lab'
 
 type Trial = 'idle' | 'running' | 'passed'
@@ -27,6 +27,7 @@ export function ScorersView() {
   const editorRef = useRef<{ insert: (field: string) => void }>(null)
   const usesPrompt = s.implType !== 'script'
   const template = s.promptTemplate ?? defaultPrompt(s.inputFields)
+  const background = s.background ?? defaultBackground
   const refs = usesPrompt ? referencedVars(template) : []
   const keyTaken = dims.some((d) => d.key === draft.key.trim())
   const canAdd = draft.key.trim() && draft.name.trim() && !keyTaken
@@ -56,6 +57,7 @@ export function ScorersView() {
       <TrialLab
         scorer={s}
         template={template}
+        background={background}
         onClose={() => setLab(false)}
         onChange={update}
         onPublish={() => update({ status: 'published' })}
@@ -102,7 +104,6 @@ export function ScorersView() {
                 <Td><Mono>{d.key}</Mono></Td>
                 <Td>
                   <div className="font-medium">{d.name}</div>
-                  <Mono className="text-[11px] text-muted-foreground">gt:{d.gtKey}</Mono>
                 </Td>
                 <Td>
                   <div className="flex flex-col gap-0.5 font-mono text-[11px] text-muted-foreground">
@@ -145,7 +146,6 @@ export function ScorersView() {
               <div className="mt-1.5 flex items-center gap-1.5">
                 <Tag tone={x.status === 'published' ? 'pass' : 'neutral'}>{x.status}</Tag>
                 <Mono className="text-muted-foreground">v{x.version}</Mono>
-                <span className="text-[11px] text-muted-foreground">{implLabel[x.implType]}</span>
               </div>
             </button>
           ))}
@@ -192,6 +192,7 @@ export function ScorersView() {
                   <PromptEditor
                     insertRef={editorRef}
                     template={template}
+                    background={background}
                     model={s.judgeModel ?? judgeModels[0]}
                     promptVersion={s.promptVersion ?? `pt_${s.id.replace('sc_', '')}@v1`}
                     inputFields={s.inputFields}

@@ -104,6 +104,7 @@ export type Scorer = {
   promptVersion?: string
   judgeModel?: string
   promptTemplate?: string
+  background?: string
   scriptId?: string
   scriptHash?: string
   evidenceScript?: string
