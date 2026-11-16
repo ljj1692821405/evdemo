@@ -228,8 +228,8 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                       <Td><Mono>{r.cost}</Mono></Td>
                       <Td><Mono className="text-muted-foreground">{r.startedAt}</Mono></Td>
                       <Td className="text-right">
-                        {r.id === 'run_0412' ? (
-                          <Link href="/dashboard" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                        {r.status === 'completed' || r.status === 'partial' ? (
+                          <Link href={`/dashboard?run=${r.id}`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
                             <BarChart3 className="size-3.5" aria-hidden="true" />看板
                           </Link>
                         ) : null}
@@ -240,7 +240,6 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
               </table>
             )}
           </Panel>
-          <p className="px-1 font-mono text-[11px] text-muted-foreground">单元 = turn × 维度 · 重复执行生成新 run · 分数只增不改</p>
         </div>
       )}
     </div>

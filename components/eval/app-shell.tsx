@@ -78,11 +78,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           ))}
         </nav>
-        <div className="border-t border-sidebar-border px-4 py-3 font-mono text-[10px] leading-relaxed text-sidebar-foreground/50">
-          raw 只落盘 · sim 才评分
-          <br />
-          快照只读 · 分数只增
-        </div>
       </aside>
       <main className="min-w-0 flex-1">{children}</main>
     </div>

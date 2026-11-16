@@ -1,14 +1,17 @@
 'use client'
 
-import { useState } from 'react'
-import { Lock, Play, Upload, GitBranch, Check, Loader2, ShieldCheck, Plus, X } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Lock, Play, Upload, GitBranch, Check, Loader2, ShieldCheck, Plus, X, Braces } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { dimensions as initialDims, fieldDict, scorers as initialScorers, type Scorer } from '@/lib/mock-data'
+import { dimensions as initialDims, fieldDict, scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
 import { Panel, Tag, Mono, Th, Td, Btn } from './primitives'
+import { PromptEditor, defaultPrompt, referencedVars, judgeModels } from './prompt-editor'
 
 type Trial = 'idle' | 'running' | 'passed'
 
 const implLabel = { llm_judge: 'LLM 裁判', script: '脚本', hybrid: '混合' }
+
+const emptyDim = { key: '', name: '', gtKey: '', release: '0.85' }
 
 export function ScorersView() {
   const [dims, setDims] = useState(initialDims)
@@ -18,6 +21,29 @@ export function ScorersView() {
   const s = list.find((x) => x.id === sel)!
   const locked = s.status === 'published'
   const t = trial[s.id] ?? 'idle'
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState(emptyDim)
+  const editorRef = useRef<{ insert: (field: string) => void }>(null)
+  const usesPrompt = s.implType !== 'script'
+  const template = s.promptTemplate ?? defaultPrompt(s.inputFields)
+  const refs = usesPrompt ? referencedVars(template) : []
+  const keyTaken = dims.some((d) => d.key === draft.key.trim())
+  const canAdd = draft.key.trim() && draft.name.trim() && !keyTaken
+
+  const addDim = () => {
+    if (!canAdd) return
+    const dim: Dimension = {
+      key: draft.key.trim(),
+      name: draft.name.trim(),
+      gtKey: draft.gtKey.trim() || draft.key.trim(),
+      scoreType: 'binary',
+      thresholds: { release: Number(draft.release) || 0.85, agreement: 0.85, minSamples: 10 },
+      enabled: true,
+    }
+    setDims((ds) => [...ds, dim])
+    setDraft(emptyDim)
+    setAdding(false)
+  }
 
   const update = (patch: Partial<Scorer>) => setList((l) => l.map((x) => (x.id === s.id ? { ...x, ...patch } : x)))
   const tokens = s.inputFields.reduce((sum, f) => sum + (fieldDict.find((d) => d.logicalName === f)?.avgTokens ?? 0), 0)
@@ -30,7 +56,32 @@ export function ScorersView() {
 
   return (
     <div className="grid grid-cols-1 gap-4 p-6 xl:grid-cols-[380px_1fr]">
-      <Panel title="维度注册表" bodyClassName="p-0">
+      <Panel
+        title="维度注册表"
+        actions={
+          <Btn size="sm" variant={adding ? 'ghost' : 'outline'} onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
+            {adding ? <X className="size-3.5" aria-hidden="true" /> : <Plus className="size-3.5" aria-hidden="true" />}
+            {adding ? '取消' : '新建'}
+          </Btn>
+        }
+        bodyClassName="p-0"
+      >
+        {adding ? (
+          <form
+            onSubmit={(e) => { e.preventDefault(); addDim() }}
+            className="grid grid-cols-2 gap-2 border-b bg-accent/30 p-3"
+          >
+            <MiniInput label="key" value={draft.key} placeholder="5.4" invalid={keyTaken} onChange={(v) => setDraft({ ...draft, key: v })} autoFocus />
+            <MiniInput label="名称" value={draft.name} placeholder="回复质量" onChange={(v) => setDraft({ ...draft, name: v })} />
+            <MiniInput label="gt key" value={draft.gtKey} placeholder="reply" onChange={(v) => setDraft({ ...draft, gtKey: v })} />
+            <MiniInput label="通过阈值" value={draft.release} type="number" onChange={(v) => setDraft({ ...draft, release: v })} />
+            <div className="col-span-2 flex justify-end">
+              <Btn type="submit" size="sm" variant="primary" disabled={!canAdd}>
+                <Check className="size-3.5" aria-hidden="true" />创建
+              </Btn>
+            </div>
+          </form>
+        ) : null}
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40">
             <tr><Th>key</Th><Th>名称</Th><Th>阈值</Th><Th className="text-right">启用</Th></tr>
@@ -126,12 +177,19 @@ export function ScorersView() {
                   ))}
                 </div>
               </Field>
-              {s.implType !== 'script' ? (
+              {usesPrompt ? (
                 <Field label="提示词 / 模型">
-                  <div className="flex flex-wrap gap-1.5">
-                    <Tag><Mono>{s.promptVersion ?? '—'}</Mono></Tag>
-                    <Tag><Mono>{s.judgeModel ?? '—'}</Mono></Tag>
-                  </div>
+                  <PromptEditor
+                    insertRef={editorRef}
+                    template={template}
+                    model={s.judgeModel ?? judgeModels[0]}
+                    promptVersion={s.promptVersion ?? `pt_${s.id.replace('sc_', '')}@v1`}
+                    inputFields={s.inputFields}
+                    allFields={fieldDict.map((f) => f.logicalName)}
+                    locked={locked}
+                    onChange={update}
+                    onAddField={(f) => update({ inputFields: [...s.inputFields, f] })}
+                  />
                 </Field>
               ) : null}
               {s.implType !== 'llm_judge' ? (
@@ -154,17 +212,25 @@ export function ScorersView() {
                 <ul className="flex flex-col gap-1">
                   {fieldDict.map((f) => {
                     const on = s.inputFields.includes(f.logicalName)
+                    const linked = refs.includes(f.logicalName)
                     return (
-                      <li key={f.logicalName}>
+                      <li key={f.logicalName} className="flex items-center gap-1">
                         <button
                           type="button"
                           disabled={locked}
                           aria-pressed={on}
                           onClick={() => update({ inputFields: on ? s.inputFields.filter((x) => x !== f.logicalName) : [...s.inputFields, f.logicalName] })}
-                          className={cn('flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left', on ? 'border-primary/40 bg-accent/50' : 'border-transparent hover:bg-muted', locked && 'cursor-not-allowed')}
+                          className={cn('flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1.5 text-left', on ? 'border-primary/40 bg-accent/50' : 'border-transparent hover:bg-muted', locked && 'cursor-not-allowed')}
                         >
                           {on ? <X className="size-3 text-muted-foreground" aria-hidden="true" /> : <Plus className="size-3 text-muted-foreground" aria-hidden="true" />}
                           <Mono className={cn(!on && 'text-muted-foreground')}>{f.logicalName}</Mono>
+                          {on && usesPrompt ? (
+                            linked ? (
+                              <Tag tone="primary" className="px-1"><Braces className="size-3" aria-hidden="true" /><span className="sr-only">已引用</span></Tag>
+                            ) : (
+                              <span className="size-1.5 shrink-0 rounded-full bg-warn" role="img" aria-label="未引用" />
+                            )
+                          ) : null}
                           <div className="ml-auto flex items-center gap-2">
                             <div className="h-1 w-16 overflow-hidden rounded-full bg-muted">
                               <div className={cn('h-full', f.avgTokens > 2000 ? 'bg-warn' : 'bg-primary/60')} style={{ width: `${Math.min(100, (f.avgTokens / 8100) * 100)}%` }} />
@@ -172,6 +238,16 @@ export function ScorersView() {
                             <Mono className={cn('w-14 text-right text-[11px]', f.avgTokens > 2000 ? 'text-warn' : 'text-muted-foreground')}>{f.avgTokens.toLocaleString()}</Mono>
                           </div>
                         </button>
+                        {usesPrompt && on && !locked ? (
+                          <button
+                            type="button"
+                            onClick={() => editorRef.current?.insert(f.logicalName)}
+                            aria-label={`插入 ${f.logicalName}`}
+                            className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-card text-muted-foreground hover:border-primary/50 hover:text-primary"
+                          >
+                            <Braces className="size-3.5" aria-hidden="true" />
+                          </button>
+                        ) : null}
                       </li>
                     )
                   })}
@@ -246,5 +322,39 @@ function Stepper({ status, trial }: { status: Scorer['status']; trial: Trial }) 
         </li>
       ))}
     </ol>
+  )
+}
+
+function MiniInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+  invalid,
+  autoFocus,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  type?: string
+  invalid?: boolean
+  autoFocus?: boolean
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        step={type === 'number' ? '0.01' : undefined}
+        aria-invalid={invalid || undefined}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn('h-8 rounded-md border bg-card px-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary/30', invalid && 'border-fail text-fail')}
+      />
+    </label>
   )
 }

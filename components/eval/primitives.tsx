@@ -1,3 +1,5 @@
+import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Verdict } from '@/lib/mock-data'
 
@@ -6,15 +8,26 @@ export function PageHeader({
   title,
   meta,
   actions,
+  back,
 }: {
   index: number
   title: string
   meta?: React.ReactNode
   actions?: React.ReactNode
+  back?: string
 }) {
   return (
     <header className="flex flex-wrap items-end justify-between gap-4 border-b bg-card px-6 py-4">
       <div className="flex items-center gap-3">
+        {back ? (
+          <Link
+            href={back}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-card px-2.5 text-sm font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            返回
+          </Link>
+        ) : null}
         <span className="flex size-7 items-center justify-center rounded-md bg-primary font-mono text-xs font-semibold text-primary-foreground">
           {index}
         </span>

@@ -1,27 +1,39 @@
 import Link from 'next/link'
 import { Lock, AlertTriangle, GitCompareArrows, Coins, Clock } from 'lucide-react'
 import { PageHeader, Panel, Tag, Ratio, Th, Td, Mono, VerdictBadge, Progress } from '@/components/eval/primitives'
-import { dimensions, runStats, experiments, runs } from '@/lib/mock-data'
+import { dimensions } from '@/lib/mock-data'
+import { runContext } from '@/lib/runs'
+import { RunPicker } from '@/components/eval/run-picker'
 import { judgeDimension, pct } from '@/lib/stats'
 
 export const metadata = { title: '数据看板 · 评测平台' }
 
-export default function DashboardPage() {
-  const s = runStats.run_0412
-  const run = runs.find((r) => r.id === s.runId)!
-  const exp = experiments.find((e) => e.id === run.experimentId)!
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ run?: string }> }) {
+  const { run: runId } = await searchParams
+  const ctx = runContext(runId)
+  if (!ctx) {
+    return (
+      <div>
+        <PageHeader index={6} title="数据看板" back="/experiments" />
+        <RunPicker basePath="/dashboard" />
+      </div>
+    )
+  }
+  const { stats: s, run, exp } = ctx
   const valid = s.pass + s.fail
+  const reviewHref = `/review?run=${run.id}`
 
   return (
     <div>
       <PageHeader
         index={6}
         title="数据看板"
+        back="/dashboard"
         meta={
           <span className="flex flex-wrap items-center gap-2">
             <Mono>{s.runId}</Mono>
             <span aria-hidden="true">·</span>
-            <Link href="/experiments" className="hover:text-foreground hover:underline">{exp.name}</Link>
+            <Link href={`/experiments?id=${exp.id}`} className="hover:text-foreground hover:underline">{exp.name}</Link>
             <span aria-hidden="true">·</span>
             <Mono>{exp.snapshotId}</Mono>
             <span aria-hidden="true">·</span>
@@ -43,8 +55,8 @@ export default function DashboardPage() {
           <BigNumber
             label="裁判-人工一致率"
             value={pct(s.agreement.agree / s.agreement.n)}
-            sub={`基于 ${s.agreement.n} 条`}
-            href="/review"
+            sub={`n = ${s.agreement.n}`}
+            href={reviewHref}
           />
           <BigNumber
             label="有效样本"
@@ -108,7 +120,7 @@ export default function DashboardPage() {
                           <span className={d.agreement.stale ? 'text-muted-foreground line-through' : 'font-medium'}>
                             {pct(d.agreement.agree / d.agreement.n)}
                           </span>
-                          <span className="text-[11px] text-muted-foreground">基于 {d.agreement.n} 条</span>
+                          <Mono className="text-[11px] text-muted-foreground">n={d.agreement.n}</Mono>
                           {d.agreement.stale ? (
                             <Tag tone="warn" className="gap-1"><Clock className="size-3" aria-hidden="true" />已过期</Tag>
                           ) : null}
@@ -133,7 +145,7 @@ export default function DashboardPage() {
                 <li key={f.caseId + f.dim} className="flex items-start gap-3 px-4 py-2.5">
                   <Mono className="mt-0.5 shrink-0 text-muted-foreground">{f.dim}</Mono>
                   <div className="min-w-0">
-                    <Link href="/review" className="font-mono text-xs text-primary hover:underline">{f.caseId}</Link>
+                    <Link href={reviewHref} className="font-mono text-xs text-primary hover:underline">{f.caseId}</Link>
                     <p className="text-pretty text-[13px] leading-snug">{f.reason}</p>
                   </div>
                 </li>
@@ -148,7 +160,7 @@ export default function DashboardPage() {
               <tbody className="divide-y">
                 {s.disagreeTop.map((d) => (
                   <tr key={d.caseId + d.turn + d.dim}>
-                    <Td><Link href="/review" className="font-mono text-xs text-primary hover:underline">{d.caseId}#{d.turn}</Link></Td>
+                    <Td><Link href={reviewHref} className="font-mono text-xs text-primary hover:underline">{d.caseId}#{d.turn}</Link></Td>
                     <Td><Mono>{d.dim}</Mono></Td>
                     <Td><VerdictBadge verdict={d.judge} /></Td>
                     <Td><VerdictBadge verdict={d.human} /></Td>
@@ -170,7 +182,7 @@ export default function DashboardPage() {
                 </div>
               ))}
             </dl>
-            <p className="mt-3 font-mono text-[11px] text-muted-foreground">单元 {run.units} · script 单元不计调用</p>
+            <p className="mt-3 font-mono text-[11px] text-muted-foreground">单元 {run.units}</p>
           </Panel>
         </div>
       </div>

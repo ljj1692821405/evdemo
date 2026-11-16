@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, MessageSquare, Bot, Wrench, Gavel, FileDiff, Zap, Check, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MessageSquare, Bot, Wrench, Gavel, FileDiff, Zap, Check, X, ScrollText, GitCompareArrows } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { dimensions, reviewSchema, reviewTurns, type Verdict } from '@/lib/mock-data'
+import { dimensions, reviewSchema, reviewTurns as allTurns, type Verdict } from '@/lib/mock-data'
 import { agreementStats, pct } from '@/lib/stats'
 import { Tag, VerdictBadge, Mono, Progress, Btn } from './primitives'
 import { EvidenceView } from './evidence-view'
@@ -11,7 +11,11 @@ import { WorkspaceDiff } from './workspace-diff'
 
 const key = (c: string, t: number, d: string) => `${c}#${t}#${d}`
 
-export function ReviewBoard() {
+export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
+  const reviewTurns = useMemo(
+    () => allTurns.map((t) => ({ ...t, judgments: t.judgments.filter((j) => dimKeys.includes(j.dim)) })).filter((t) => t.judgments.length > 0),
+    [dimKeys],
+  )
   const [idx, setIdx] = useState(0)
   const [focusDim, setFocusDim] = useState(0)
   const [human, setHuman] = useState<Record<string, Verdict>>({
@@ -28,7 +32,7 @@ export function ReviewBoard() {
     setIdx((i) => Math.min(reviewTurns.length - 1, Math.max(0, i + delta)))
     setFocusDim(0)
     setExpanded(false)
-  }, [])
+  }, [reviewTurns.length])
 
   const apply = useCallback(
     (value: Verdict) => {
@@ -71,7 +75,7 @@ export function ReviewBoard() {
       judgePass: pairs.filter((p) => p.judge === 'pass').length,
       humanPass: pairs.filter((p) => p.human === 'pass').length,
     }
-  }, [human])
+  }, [human, reviewTurns])
 
   const long = turn.agent.length > 240
 
@@ -165,6 +169,7 @@ export function ReviewBoard() {
                       <span className="text-sm font-medium">{dim.name}</span>
                       <VerdictBadge verdict={j.verdict} />
                       {j.shortCircuit ? <Tag tone="primary" className="gap-1"><Zap className="size-3" aria-hidden="true" />short_circuit</Tag> : null}
+                      {h && h !== j.verdict ? <Tag tone="warn" className="gap-1"><GitCompareArrows className="size-3" aria-hidden="true" />分歧</Tag> : null}
                       <div className="ml-auto flex items-center gap-1" role="radiogroup" aria-label={`${dim.name} 人工判定`}>
                         {reviewSchema.options.map((o) => {
                           const active = h === o.value
@@ -190,9 +195,14 @@ export function ReviewBoard() {
                         })}
                       </div>
                     </div>
-                    <p className="mt-1.5 text-pretty text-[13px] leading-relaxed text-muted-foreground">{j.reason}</p>
+                    <div className="mt-2.5 flex gap-2.5 rounded-md border-l-2 border-primary/50 bg-muted/40 py-2 pl-3 pr-2">
+                      <span className="flex shrink-0 items-start gap-1 pt-0.5 text-[11px] font-medium text-primary">
+                        <ScrollText className="size-3.5" aria-hidden="true" />
+                        裁判证据
+                      </span>
+                      <p className="min-w-0 text-pretty text-[13px] leading-relaxed text-foreground">{j.reason}</p>
+                    </div>
                     {j.evidence ? <div className="mt-2"><EvidenceView evidence={j.evidence} /></div> : null}
-                    {h && h !== j.verdict ? <p className="mt-2 text-xs font-medium text-warn">与裁判不一致</p> : null}
                   </li>
                 )
               })}
@@ -222,7 +232,7 @@ export function ReviewBoard() {
         <div className="rounded-lg border bg-card p-4">
           <div className="text-xs text-muted-foreground">一致率</div>
           <div className="mt-1 font-mono text-3xl font-semibold tabular-nums">{pct(stats.rate)}</div>
-          <div className="text-xs text-muted-foreground">基于 {stats.denominator} 条</div>
+          <Mono className="text-muted-foreground">n = {stats.denominator}</Mono>
           <dl className="mt-4 grid grid-cols-2 gap-y-2 text-xs">
             <dt className="text-muted-foreground">na 占比</dt><dd className="text-right font-mono">{pct(stats.naRatio)}</dd>
             <dt className="text-muted-foreground">覆盖度</dt><dd className="text-right font-mono">{pct(stats.coverage)}</dd>
@@ -232,28 +242,6 @@ export function ReviewBoard() {
           </dl>
           <Progress className="mt-4" value={stats.reviewedTurns / reviewTurns.length} tone="pass" />
         </div>
-        <div className="rounded-lg border bg-card p-4 text-xs">
-          <div className="mb-2 font-medium">键盘</div>
-          <ul className="flex flex-col gap-1.5 text-muted-foreground">
-            {[
-              ['1 / 2 / 3', '判定当前维度'],
-              ['↑ ↓', '切换维度'],
-              ['J K  ← →', '切换轮次'],
-              ['N', '备注'],
-              ['Esc', '离开输入框'],
-            ].map(([k, v]) => (
-              <li key={k} className="flex justify-between gap-2">
-                <kbd className="rounded border bg-muted px-1.5 font-mono text-[10px] text-foreground">{k}</kbd>
-                <span>{v}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <p className="px-1 font-mono text-[10px] leading-relaxed text-muted-foreground">
-          source=human 插新行 · 裁判分不变
-          <br />
-          review_schema · scope={reviewSchema.scope}
-        </p>
       </aside>
     </div>
   )

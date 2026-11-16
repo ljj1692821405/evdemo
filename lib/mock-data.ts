@@ -103,6 +103,7 @@ export type Scorer = {
   inputFields: string[]
   promptVersion?: string
   judgeModel?: string
+  promptTemplate?: string
   scriptId?: string
   scriptHash?: string
   evidenceScript?: string

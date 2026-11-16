@@ -10,6 +10,7 @@ export default function FieldDictPage() {
       <PageHeader
         index={2}
         title="字段字典"
+        back="/datasets"
         meta="T2 · 逻辑名 → L-sim 物理路径"
         actions={<Tag tone="primary"><Mono>{fieldDictVersion}</Mono></Tag>}
       />
