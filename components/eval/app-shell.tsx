@@ -43,7 +43,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="leading-tight">
             <div className="text-sm font-semibold text-sidebar-accent-foreground">评测平台</div>
-            <div className="font-mono text-[10px] text-sidebar-foreground/60">v0.4-slim</div>
           </div>
         </div>
         <nav aria-label="主导航" className="flex-1 overflow-y-auto px-2 py-3">
