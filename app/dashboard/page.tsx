@@ -5,6 +5,8 @@ import { dimensions } from '@/lib/mock-data'
 import { runContext } from '@/lib/runs'
 import { RunPicker } from '@/components/eval/run-picker'
 import { judgeDimension, pct } from '@/lib/stats'
+import { snapshotForExp } from '@/lib/capability-data'
+import { FrozenSnapshotCard } from '@/components/eval/capability-snapshot'
 
 export const metadata = { title: '数据看板 · 评测平台' }
 
@@ -20,6 +22,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     )
   }
   const { stats: s, run, exp } = ctx
+  const capSnap = snapshotForExp(exp.id)
   const valid = s.pass + s.fail
   const reviewHref = `/review?run=${run.id}`
 
@@ -38,6 +41,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <Mono>{exp.snapshotId}</Mono>
             <span aria-hidden="true">·</span>
             <Mono>{exp.fieldDictVersion}</Mono>
+            {capSnap ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <Mono>{capSnap.agentCode}@{capSnap.configVersion}</Mono>
+              </>
+            ) : null}
           </span>
         }
         actions={
@@ -71,6 +80,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             }
           />
         </div>
+
+        <Panel title="能力配置快照">
+          <FrozenSnapshotCard snap={capSnap} />
+        </Panel>
 
         {/* Strip 2: dimension table */}
         <Panel title="维度" bodyClassName="p-0">

@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Play, Plus, Snowflake, Lock, BarChart3 } from 'lucide-react'
+import { Play, Plus, Snowflake, Lock, BarChart3, Boxes } from 'lucide-react'
+import { useScope } from '@/lib/tenant-store'
+import { useCapabilities } from '@/lib/capability-store'
+import { resolveConfig, snapshotForExp, toFrozen, type FrozenSnapshot } from '@/lib/capability-data'
+import { FrozenSnapshotCard } from './capability-snapshot'
 import { cn } from '@/lib/utils'
 import { useFieldDict } from '@/lib/field-dict-store'
 import { experiments as initialExps, runs as initialRuns, scorers, snapshots, dimensions, type Experiment, type Run, type RunStatus } from '@/lib/mock-data'
@@ -18,6 +22,9 @@ const runTone: Record<RunStatus, 'neutral' | 'primary' | 'pass' | 'warn' | 'fail
 
 export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: string; newFromSnapshot?: string }) {
   const { version: fieldDictVersion } = useFieldDict()
+  const { agent } = useScope()
+  const caps = useCapabilities()
+  const [createdSnaps, setCreatedSnaps] = useState<Record<string, FrozenSnapshot>>({})
   const [exps, setExps] = useState<Experiment[]>(initialExps)
   const [runList, setRunList] = useState<Run[]>(initialRuns)
   const [sel, setSel] = useState(initialId && initialExps.some((e) => e.id === initialId) ? initialId : initialExps[0].id)
@@ -55,6 +62,11 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
     const outputs = draft.scorerIds.flatMap((sid) => scorers.find((s) => s.id === sid)!.outputs)
     const weights = Object.fromEntries(outputs.map((o) => [o, Number((1 / outputs.length).toFixed(2))]))
     setExps((e) => [{ id, name: draft.name || '未命名实验', snapshotId: draft.snapshotId, scorerIds: draft.scorerIds, weights, createdBy: '我', createdAt: '刚刚', fieldDictVersion }, ...e])
+    const cfg = agent ? caps.currentOf(agent.id) : undefined
+    if (agent && cfg) {
+      const snap = Object.freeze({ expId: id, agentId: agent.id, agentCode: agent.code, configVersion: cfg.version, frozenAt: '刚刚', items: toFrozen(resolveConfig(cfg, caps.assets)) })
+      setCreatedSnaps((m) => ({ ...m, [id]: snap }))
+    }
     setSel(id)
     setCreating(false)
     setDraft((d) => ({ ...d, name: '' }))
@@ -205,6 +217,10 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                 )
               })}
             </div>
+          </Panel>
+
+          <Panel title={<span className="flex items-center gap-2"><Boxes className="size-4 text-muted-foreground" aria-hidden="true" />能力配置快照</span>}>
+            <FrozenSnapshotCard snap={createdSnaps[exp.id] ?? snapshotForExp(exp.id)} />
           </Panel>
 
           <Panel title="EvalRun" bodyClassName="p-0">

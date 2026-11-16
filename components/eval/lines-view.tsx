@@ -15,6 +15,7 @@ import {
   type TaskSchedule,
 } from '@/lib/tenant-store'
 import { Btn, Mono, Tag } from './primitives'
+import { CapabilityPanel } from './capability-panel'
 
 const inputCls =
   'h-8 w-full rounded-md border border-input bg-card px-2.5 text-sm placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring'
@@ -379,6 +380,8 @@ export function LinesView() {
                 </ul>
               </div>
             </div>
+
+            <CapabilityPanel key={agent.id} agentId={agent.id} agentCode={agent.code} />
           </>
         )}
       </section>
