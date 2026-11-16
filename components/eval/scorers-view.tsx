@@ -1,47 +1,123 @@
 'use client'
 
-import { useState } from 'react'
-import { Lock, Play, Upload, GitBranch, Check, Loader2, ShieldCheck, Plus, X } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Lock, Upload, GitBranch, Check, ShieldCheck, Plus, X, Braces, FlaskConical } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { dimensions as initialDims, fieldDict, scorers as initialScorers, type Scorer } from '@/lib/mock-data'
+import { dimensions as initialDims, scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
+import { useFieldDict, useScorers } from '@/lib/field-dict-store'
 import { Panel, Tag, Mono, Th, Td, Btn } from './primitives'
+import { PromptEditor, defaultPrompt, defaultBackground, referencedVars, judgeModels } from './prompt-editor'
+import { TrialLab } from './trial-lab'
 
 type Trial = 'idle' | 'running' | 'passed'
 
 const implLabel = { llm_judge: 'LLM 裁判', script: '脚本', hybrid: '混合' }
 
+const emptyDim = { key: '', name: '', gtKey: '', release: '0.85' }
+
 export function ScorersView() {
   const [dims, setDims] = useState(initialDims)
-  const [list, setList] = useState<Scorer[]>(initialScorers)
+  const [list, setList] = useScorers()
+  const dict = useFieldDict()
   const [sel, setSel] = useState(initialScorers[3].id)
   const [trial, setTrial] = useState<Record<string, Trial>>({})
   const s = list.find((x) => x.id === sel)!
   const locked = s.status === 'published'
   const t = trial[s.id] ?? 'idle'
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState(emptyDim)
+  const editorRef = useRef<{ insert: (field: string) => void }>(null)
+  const usesPrompt = s.implType !== 'script'
+  const template = s.promptTemplate ?? defaultPrompt(s.inputFields)
+  const background = s.background ?? defaultBackground
+  const refs = usesPrompt ? referencedVars(template) : []
+  const keyTaken = dims.some((d) => d.key === draft.key.trim())
+  const canAdd = draft.key.trim() && draft.name.trim() && !keyTaken
+
+  const addDim = () => {
+    if (!canAdd) return
+    const dim: Dimension = {
+      key: draft.key.trim(),
+      name: draft.name.trim(),
+      gtKey: draft.gtKey.trim() || draft.key.trim(),
+      scoreType: 'binary',
+      thresholds: { release: Number(draft.release) || 0.85, agreement: 0.85, minSamples: 10 },
+      enabled: true,
+    }
+    setDims((ds) => [...ds, dim])
+    setDraft(emptyDim)
+    setAdding(false)
+  }
 
   const update = (patch: Partial<Scorer>) => setList((l) => l.map((x) => (x.id === s.id ? { ...x, ...patch } : x)))
-  const tokens = s.inputFields.reduce((sum, f) => sum + (fieldDict.find((d) => d.logicalName === f)?.avgTokens ?? 0), 0)
+  const tokens = s.inputFields.reduce((sum, f) => sum + (dict.find(f)?.avgTokens ?? 0), 0)
+  const missingFields = s.inputFields.filter((f) => !dict.names.includes(f))
 
-  const runTrial = () => {
-    setTrial((m) => ({ ...m, [s.id]: 'running' }))
-    const id = s.id
-    setTimeout(() => setTrial((m) => ({ ...m, [id]: 'passed' })), 1200)
+  const [lab, setLab] = useState(false)
+
+  if (lab) {
+    return (
+      <TrialLab
+        scorer={s}
+        template={template}
+        background={background}
+        onClose={() => setLab(false)}
+        onChange={update}
+        onPublish={() => update({ status: 'published' })}
+        onPassed={() => setTrial((m) => ({ ...m, [s.id]: 'passed' }))}
+      />
+    )
   }
 
   return (
     <div className="grid grid-cols-1 gap-4 p-6 xl:grid-cols-[380px_1fr]">
-      <Panel title="维度注册表" bodyClassName="p-0">
+      <Panel
+        title="维度注册表"
+        actions={
+          <Btn size="sm" variant={adding ? 'ghost' : 'outline'} onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
+            {adding ? <X className="size-3.5" aria-hidden="true" /> : <Plus className="size-3.5" aria-hidden="true" />}
+            {adding ? '取消' : '新建'}
+          </Btn>
+        }
+        bodyClassName="p-0"
+      >
+        {adding ? (
+          <form
+            onSubmit={(e) => { e.preventDefault(); addDim() }}
+            className="grid grid-cols-2 gap-2 border-b bg-accent/30 p-3"
+          >
+            <MiniInput label="key" value={draft.key} placeholder="5.4" invalid={keyTaken} onChange={(v) => setDraft({ ...draft, key: v })} autoFocus />
+            <MiniInput label="名称" value={draft.name} placeholder="回复质量" onChange={(v) => setDraft({ ...draft, name: v })} />
+            <MiniInput label="gt key" value={draft.gtKey} placeholder="reply" onChange={(v) => setDraft({ ...draft, gtKey: v })} />
+            <MiniInput label="通过阈值" value={draft.release} type="number" onChange={(v) => setDraft({ ...draft, release: v })} />
+            <div className="col-span-2 flex justify-end">
+              <Btn type="submit" size="sm" variant="primary" disabled={!canAdd}>
+                <Check className="size-3.5" aria-hidden="true" />创建
+              </Btn>
+            </div>
+          </form>
+        ) : null}
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40">
             <tr><Th>key</Th><Th>名称</Th><Th>阈值</Th><Th className="text-right">启用</Th></tr>
           </thead>
           <tbody className="divide-y">
             {dims.map((d) => (
-              <tr key={d.key} className={cn(!d.enabled && 'text-muted-foreground')}>
+              <tr key={d.key} className={cn(!d.enabled && 'text-muted-foreground', s.outputs.includes(d.key) && 'bg-accent/50')}>
                 <Td><Mono>{d.key}</Mono></Td>
                 <Td>
-                  <div className="font-medium">{d.name}</div>
-                  <Mono className="text-[11px] text-muted-foreground">gt:{d.gtKey}</Mono>
+                  <button
+                    type="button"
+                    disabled={!list.some((x) => x.outputs.includes(d.key))}
+                    aria-pressed={s.outputs.includes(d.key)}
+                    onClick={() => {
+                      const target = list.find((x) => x.outputs.includes(d.key))
+                      if (target) setSel(target.id)
+                    }}
+                    className="font-medium underline-offset-4 hover:underline disabled:no-underline disabled:opacity-50"
+                  >
+                    {d.name}
+                  </button>
                 </Td>
                 <Td>
                   <div className="flex flex-col gap-0.5 font-mono text-[11px] text-muted-foreground">
@@ -68,28 +144,6 @@ export function ScorersView() {
       </Panel>
 
       <div className="flex min-w-0 flex-col gap-4">
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {list.map((x) => (
-            <button
-              key={x.id}
-              type="button"
-              onClick={() => setSel(x.id)}
-              aria-current={x.id === sel ? 'true' : undefined}
-              className={cn('min-w-44 shrink-0 rounded-lg border bg-card p-3 text-left transition-colors', x.id === sel ? 'border-primary ring-2 ring-primary/15' : 'hover:border-input')}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">{x.name}</span>
-                {x.status === 'published' ? <Lock className="size-3.5 text-muted-foreground" aria-label="已发布" /> : null}
-              </div>
-              <div className="mt-1.5 flex items-center gap-1.5">
-                <Tag tone={x.status === 'published' ? 'pass' : 'neutral'}>{x.status}</Tag>
-                <Mono className="text-muted-foreground">v{x.version}</Mono>
-                <span className="text-[11px] text-muted-foreground">{implLabel[x.implType]}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-
         <Panel
           title={
             <span className="flex items-center gap-2">
@@ -126,12 +180,20 @@ export function ScorersView() {
                   ))}
                 </div>
               </Field>
-              {s.implType !== 'script' ? (
+              {usesPrompt ? (
                 <Field label="提示词 / 模型">
-                  <div className="flex flex-wrap gap-1.5">
-                    <Tag><Mono>{s.promptVersion ?? '—'}</Mono></Tag>
-                    <Tag><Mono>{s.judgeModel ?? '—'}</Mono></Tag>
-                  </div>
+                  <PromptEditor
+                    insertRef={editorRef}
+                    template={template}
+                    background={background}
+                    model={s.judgeModel ?? judgeModels[0]}
+                    promptVersion={s.promptVersion ?? `pt_${s.id.replace('sc_', '')}@v1`}
+                    inputFields={s.inputFields}
+                    allFields={dict.names}
+                    locked={locked}
+                    onChange={update}
+                    onAddField={(f) => update({ inputFields: [...s.inputFields, f] })}
+                  />
                 </Field>
               ) : null}
               {s.implType !== 'llm_judge' ? (
@@ -152,19 +214,43 @@ export function ScorersView() {
             <div className="flex flex-col gap-4">
               <Field label={<span className="flex items-center justify-between">输入字段 <span className={cn('font-mono', tokens > 5000 ? 'text-warn' : 'text-muted-foreground')}>≈ {tokens.toLocaleString()} tok / 单元</span></span>}>
                 <ul className="flex flex-col gap-1">
-                  {fieldDict.map((f) => {
+                  {missingFields.map((f) => (
+                    <li key={f} className="flex items-center gap-2 rounded-md border border-fail bg-fail-soft px-2.5 py-1.5">
+                      <Mono className="text-fail line-through">{f}</Mono>
+                      <Tag tone="fail">字典缺失</Tag>
+                      {!locked ? (
+                        <button
+                          type="button"
+                          onClick={() => update({ inputFields: s.inputFields.filter((x) => x !== f) })}
+                          aria-label={`移除 ${f}`}
+                          className="ml-auto flex size-6 items-center justify-center rounded text-fail hover:bg-card"
+                        >
+                          <X className="size-3.5" aria-hidden="true" />
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                  {dict.entries.map((f) => {
                     const on = s.inputFields.includes(f.logicalName)
+                    const linked = refs.includes(f.logicalName)
                     return (
-                      <li key={f.logicalName}>
+                      <li key={f.logicalName} className="flex items-center gap-1">
                         <button
                           type="button"
                           disabled={locked}
                           aria-pressed={on}
                           onClick={() => update({ inputFields: on ? s.inputFields.filter((x) => x !== f.logicalName) : [...s.inputFields, f.logicalName] })}
-                          className={cn('flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left', on ? 'border-primary/40 bg-accent/50' : 'border-transparent hover:bg-muted', locked && 'cursor-not-allowed')}
+                          className={cn('flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1.5 text-left', on ? 'border-primary/40 bg-accent/50' : 'border-transparent hover:bg-muted', locked && 'cursor-not-allowed')}
                         >
                           {on ? <X className="size-3 text-muted-foreground" aria-hidden="true" /> : <Plus className="size-3 text-muted-foreground" aria-hidden="true" />}
                           <Mono className={cn(!on && 'text-muted-foreground')}>{f.logicalName}</Mono>
+                          {on && usesPrompt ? (
+                            linked ? (
+                              <Tag tone="primary" className="px-1"><Braces className="size-3" aria-hidden="true" /><span className="sr-only">已引用</span></Tag>
+                            ) : (
+                              <span className="size-1.5 shrink-0 rounded-full bg-warn" role="img" aria-label="未引用" />
+                            )
+                          ) : null}
                           <div className="ml-auto flex items-center gap-2">
                             <div className="h-1 w-16 overflow-hidden rounded-full bg-muted">
                               <div className={cn('h-full', f.avgTokens > 2000 ? 'bg-warn' : 'bg-primary/60')} style={{ width: `${Math.min(100, (f.avgTokens / 8100) * 100)}%` }} />
@@ -172,6 +258,16 @@ export function ScorersView() {
                             <Mono className={cn('w-14 text-right text-[11px]', f.avgTokens > 2000 ? 'text-warn' : 'text-muted-foreground')}>{f.avgTokens.toLocaleString()}</Mono>
                           </div>
                         </button>
+                        {usesPrompt && on && !locked ? (
+                          <button
+                            type="button"
+                            onClick={() => editorRef.current?.insert(f.logicalName)}
+                            aria-label={`插入 ${f.logicalName}`}
+                            className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-card text-muted-foreground hover:border-primary/50 hover:text-primary"
+                          >
+                            <Braces className="size-3.5" aria-hidden="true" />
+                          </button>
+                        ) : null}
                       </li>
                     )
                   })}
@@ -198,13 +294,12 @@ export function ScorersView() {
                     <Tag tone="pass" className="gap-1"><ShieldCheck className="size-3" aria-hidden="true" />AST 门禁</Tag>
                     <Tag tone="pass">import ✓</Tag>
                     <Tag tone="pass">output_schema ✓</Tag>
-                    <Mono className="text-muted-foreground">case_0001 → 5.4 pass</Mono>
                   </div>
                 ) : null}
                 <div className="ml-auto flex gap-2">
-                  <Btn onClick={runTrial} disabled={t === 'running'}>
-                    {t === 'running' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
-                    试跑 1 条
+                  <Btn onClick={() => setLab(true)}>
+                    <FlaskConical className="size-4" aria-hidden="true" />
+                    试跑
                   </Btn>
                   <Btn variant="primary" disabled={t !== 'passed'} onClick={() => update({ status: 'published' })}>
                     <Upload className="size-4" aria-hidden="true" />发布
@@ -246,5 +341,39 @@ function Stepper({ status, trial }: { status: Scorer['status']; trial: Trial }) 
         </li>
       ))}
     </ol>
+  )
+}
+
+function MiniInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+  invalid,
+  autoFocus,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  type?: string
+  invalid?: boolean
+  autoFocus?: boolean
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        step={type === 'number' ? '0.01' : undefined}
+        aria-invalid={invalid || undefined}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn('h-8 rounded-md border bg-card px-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary/30', invalid && 'border-fail text-fail')}
+      />
+    </label>
   )
 }

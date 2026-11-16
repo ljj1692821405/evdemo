@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Play, Plus, Snowflake, Lock, BarChart3 } from 'lucide-react'
+import { Play, Plus, Snowflake, Lock, BarChart3, Boxes } from 'lucide-react'
+import { useScope } from '@/lib/tenant-store'
+import { useCapabilities } from '@/lib/capability-store'
+import { resolveConfig, snapshotForExp, toFrozen, type FrozenSnapshot } from '@/lib/capability-data'
+import { FrozenSnapshotCard } from './capability-snapshot'
 import { cn } from '@/lib/utils'
-import { experiments as initialExps, runs as initialRuns, scorers, snapshots, dimensions, fieldDictVersion, type Experiment, type Run, type RunStatus } from '@/lib/mock-data'
+import { useFieldDict } from '@/lib/field-dict-store'
+import { experiments as initialExps, runs as initialRuns, scorers, snapshots, dimensions, type Experiment, type Run, type RunStatus } from '@/lib/mock-data'
 import { Panel, Tag, Mono, Th, Td, Btn, Progress } from './primitives'
 
 const runTone: Record<RunStatus, 'neutral' | 'primary' | 'pass' | 'warn' | 'fail'> = {
@@ -16,6 +21,10 @@ const runTone: Record<RunStatus, 'neutral' | 'primary' | 'pass' | 'warn' | 'fail
 }
 
 export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: string; newFromSnapshot?: string }) {
+  const { version: fieldDictVersion } = useFieldDict()
+  const { agent } = useScope()
+  const caps = useCapabilities()
+  const [createdSnaps, setCreatedSnaps] = useState<Record<string, FrozenSnapshot>>({})
   const [exps, setExps] = useState<Experiment[]>(initialExps)
   const [runList, setRunList] = useState<Run[]>(initialRuns)
   const [sel, setSel] = useState(initialId && initialExps.some((e) => e.id === initialId) ? initialId : initialExps[0].id)
@@ -53,6 +62,11 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
     const outputs = draft.scorerIds.flatMap((sid) => scorers.find((s) => s.id === sid)!.outputs)
     const weights = Object.fromEntries(outputs.map((o) => [o, Number((1 / outputs.length).toFixed(2))]))
     setExps((e) => [{ id, name: draft.name || '未命名实验', snapshotId: draft.snapshotId, scorerIds: draft.scorerIds, weights, createdBy: '我', createdAt: '刚刚', fieldDictVersion }, ...e])
+    const cfg = agent ? caps.currentOf(agent.id) : undefined
+    if (agent && cfg) {
+      const snap = Object.freeze({ expId: id, agentId: agent.id, agentCode: agent.code, configVersion: cfg.version, frozenAt: '刚刚', items: toFrozen(resolveConfig(cfg, caps.assets)) })
+      setCreatedSnaps((m) => ({ ...m, [id]: snap }))
+    }
     setSel(id)
     setCreating(false)
     setDraft((d) => ({ ...d, name: '' }))
@@ -205,6 +219,10 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
             </div>
           </Panel>
 
+          <Panel title={<span className="flex items-center gap-2"><Boxes className="size-4 text-muted-foreground" aria-hidden="true" />能力配置快照</span>}>
+            <FrozenSnapshotCard snap={createdSnaps[exp.id] ?? snapshotForExp(exp.id)} />
+          </Panel>
+
           <Panel title="EvalRun" bodyClassName="p-0">
             {expRuns.length === 0 ? (
               <p className="p-8 text-center text-sm text-muted-foreground">尚未执行</p>
@@ -228,8 +246,8 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                       <Td><Mono>{r.cost}</Mono></Td>
                       <Td><Mono className="text-muted-foreground">{r.startedAt}</Mono></Td>
                       <Td className="text-right">
-                        {r.id === 'run_0412' ? (
-                          <Link href="/dashboard" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                        {r.status === 'completed' || r.status === 'partial' ? (
+                          <Link href={`/dashboard?run=${r.id}`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
                             <BarChart3 className="size-3.5" aria-hidden="true" />看板
                           </Link>
                         ) : null}
@@ -240,7 +258,6 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
               </table>
             )}
           </Panel>
-          <p className="px-1 font-mono text-[11px] text-muted-foreground">单元 = turn × 维度 · 重复执行生成新 run · 分数只增不改</p>
         </div>
       )}
     </div>

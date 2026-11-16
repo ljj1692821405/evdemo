@@ -46,6 +46,8 @@ export type FieldEntry = {
   paths: string[]
   avgTokens: number
   description: string
+  source?: 'sim' | 'derived'
+  script?: string
 }
 
 export const fieldDictVersion = 'fd_v5'
@@ -58,6 +60,8 @@ export const fieldDict: FieldEntry[] = [
   { logicalName: 'workspace_after', paths: ['sim_traj.workspace.after'], avgTokens: 8100, description: '工作区（后）' },
   { logicalName: 'workspace_diff', paths: ['sim_traj.workspace.diff', 'sim_traj.extra.ws_patch'], avgTokens: 540, description: '工作区行级差异' },
   { logicalName: 'clarify_question', paths: ['sim_traj.turns[].clarify.question', 'raw.sse.events[].clarify'], avgTokens: 45, description: '澄清提问' },
+  { logicalName: 'workspace_unchanged', paths: ['derived.ws_diff_extract.workspace_unchanged'], avgTokens: 120, description: '工作区未变动段落', source: 'derived', script: 'ws_diff_extract' },
+  { logicalName: 'tool_seq', paths: ['derived.tool_seq_compact.tool_seq'], avgTokens: 40, description: '工具调用序列', source: 'derived', script: 'tool_seq_compact' },
   { logicalName: 'turn_status', paths: ['sim_traj.turns[].status'], avgTokens: 4, description: '轮次终态' },
 ]
 
@@ -103,6 +107,8 @@ export type Scorer = {
   inputFields: string[]
   promptVersion?: string
   judgeModel?: string
+  promptTemplate?: string
+  background?: string
   scriptId?: string
   scriptHash?: string
   evidenceScript?: string
