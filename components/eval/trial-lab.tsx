@@ -5,7 +5,8 @@ import {
   ArrowLeft, Play, Loader2, Search, Check, X, Equal, CircleSlash, Upload, Pencil, Gavel, Clock, Coins, ArrowDownUp, History, Camera, UserRound, Braces,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { dimensions, fieldDict, snapshots, type Scorer } from '@/lib/mock-data'
+import { dimensions, snapshots, type Scorer } from '@/lib/mock-data'
+import { resolveEntry, useFieldDict } from '@/lib/field-dict-store'
 import { fieldValues, runTrial, trialUnits, type TrialResult } from '@/lib/trial-data'
 import { Mono, Tag, VerdictBadge, Btn } from './primitives'
 import { judgeModels, referencedVars } from './prompt-editor'
@@ -32,7 +33,13 @@ export function TrialLab({ scorer, template, background, onClose, onChange, onPu
   const [shown, setShown] = useState<string | null>(null)
 
   const unit = units.find((u) => u.key === sel) ?? units[0]
-  const values = unit ? fieldValues(unit) : {}
+  const dict = useFieldDict()
+  const baseValues: Record<string, string | null> = unit ? fieldValues(unit) : {}
+  const values: Record<string, string | null> = {}
+  for (const f of scorer.inputFields) {
+    const entry = dict.find(f)
+    values[f] = !entry ? null : f in baseValues ? baseValues[f] : resolveEntry(entry)
+  }
   const usesPrompt = scorer.implType !== 'script'
   const refs = usesPrompt ? referencedVars(template) : []
   const model = scorer.judgeModel ?? judgeModels[0]
@@ -297,10 +304,11 @@ function RenderedPrompt({ template, values, bound }: { template: string; values:
 }
 
 function FieldList({ fields, values }: { fields: string[]; values: Record<string, string | null> }) {
+  const dict = useFieldDict()
   return (
     <ul className="flex flex-col gap-3">
       {fields.map((f) => {
-        const entry = fieldDict.find((d) => d.logicalName === f)
+        const entry = dict.find(f)
         const v = values[f]
         return (
           <li key={f} className="rounded-lg border bg-card">

@@ -114,9 +114,9 @@ export function Th({ className, children }: { className?: string; children?: Rea
   return <th className={cn('whitespace-nowrap px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground', className)}>{children}</th>
 }
 
-export function Td({ className, children, colSpan }: { className?: string; children?: React.ReactNode; colSpan?: number }) {
+export function Td({ className, children, colSpan, onClick }: { className?: string; children?: React.ReactNode; colSpan?: number; onClick?: React.MouseEventHandler<HTMLTableCellElement> }) {
   return (
-    <td colSpan={colSpan} className={cn('px-3 py-2.5 align-middle', className)}>
+    <td colSpan={colSpan} onClick={onClick} className={cn('px-3 py-2.5 align-middle', className)}>
       {children}
     </td>
   )

@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Play, Plus, Snowflake, Lock, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { experiments as initialExps, runs as initialRuns, scorers, snapshots, dimensions, fieldDictVersion, type Experiment, type Run, type RunStatus } from '@/lib/mock-data'
+import { useFieldDict } from '@/lib/field-dict-store'
+import { experiments as initialExps, runs as initialRuns, scorers, snapshots, dimensions, type Experiment, type Run, type RunStatus } from '@/lib/mock-data'
 import { Panel, Tag, Mono, Th, Td, Btn, Progress } from './primitives'
 
 const runTone: Record<RunStatus, 'neutral' | 'primary' | 'pass' | 'warn' | 'fail'> = {
@@ -16,6 +17,7 @@ const runTone: Record<RunStatus, 'neutral' | 'primary' | 'pass' | 'warn' | 'fail
 }
 
 export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: string; newFromSnapshot?: string }) {
+  const { version: fieldDictVersion } = useFieldDict()
   const [exps, setExps] = useState<Experiment[]>(initialExps)
   const [runList, setRunList] = useState<Run[]>(initialRuns)
   const [sel, setSel] = useState(initialId && initialExps.some((e) => e.id === initialId) ? initialId : initialExps[0].id)

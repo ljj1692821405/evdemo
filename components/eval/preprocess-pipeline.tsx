@@ -16,11 +16,12 @@ import {
   Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { resolveEntry, useFieldDict, useShared } from '@/lib/field-dict-store'
 import { Panel, Tag, Mono } from './primitives'
 
 type FieldNode = { name: string; tokens: number; sample: string }
 
-const sourceFields: FieldNode[] = [
+const sourceSamples: FieldNode[] = [
   {
     name: 'workspace_before',
     tokens: 7800,
@@ -114,8 +115,20 @@ const cacheByScript: Record<string, CacheEntry[]> = {
 type RunState = 'idle' | 'running' | 'done'
 type Selection = { kind: 'script' } | { kind: 'store' } | { kind: 'field'; name: string }
 
+export function usePreprocessScripts() {
+  return useShared<Script[]>('preprocess-scripts', initialScripts)
+}
+
 export function PreprocessPipeline() {
-  const [scripts, setScripts] = useState<Script[]>(initialScripts)
+  const dict = useFieldDict()
+  const sourceFields: FieldNode[] = dict.entries
+    .filter((e) => e.source !== 'derived')
+    .map((e) => ({
+      name: e.logicalName,
+      tokens: e.avgTokens,
+      sample: sourceSamples.find((s) => s.name === e.logicalName)?.sample ?? resolveEntry(e) ?? 'null',
+    }))
+  const [scripts, setScripts] = usePreprocessScripts()
   const [activeId, setActiveId] = useState(initialScripts[0].id)
   const [version, setVersion] = useState(initialScripts[0].versions[0].v)
   const [selection, setSelection] = useState<Selection>({ kind: 'script' })
@@ -124,6 +137,7 @@ export function PreprocessPipeline() {
 
   const script = scripts.find((s) => s.id === activeId) ?? scripts[0]
   const inputs = script.inputs.map((n) => sourceFields.find((f) => f.name === n)).filter(Boolean) as FieldNode[]
+  const missingInputs = script.inputs.filter((n) => !sourceFields.some((f) => f.name === n))
   const inTok = inputs.reduce((s, n) => s + n.tokens, 0)
   const outTok = script.outputs.reduce((s, n) => s + n.tokens, 0)
   const ratio = inTok > 0 && outTok > 0 ? Math.round((1 - outTok / inTok) * 100) : null
@@ -145,6 +159,16 @@ export function PreprocessPipeline() {
 
   const createScript = (draft: Script) => {
     setScripts((prev) => [...prev, draft])
+    for (const o of draft.outputs) {
+      dict.add({
+        logicalName: o.name,
+        paths: [`derived.${draft.name}.${o.name}`],
+        avgTokens: o.tokens,
+        description: `${draft.name} 输出`,
+        source: 'derived',
+        script: draft.name,
+      })
+    }
     setCreating(false)
     setActiveId(draft.id)
     setVersion(draft.versions[0].v)
@@ -212,6 +236,8 @@ export function PreprocessPipeline() {
       {creating ? (
         <NewScriptForm
           existing={scripts.map((s) => s.id)}
+          takenFields={dict.names}
+          sourceFields={sourceFields}
           onCancel={() => setCreating(false)}
           onCreate={createScript}
         />
@@ -226,6 +252,13 @@ export function PreprocessPipeline() {
               active={selection.kind === 'field' && selection.name === n.name}
               onClick={() => setSelection({ kind: 'field', name: n.name })}
             />
+          ))}
+          {missingInputs.map((n) => (
+            <span key={n} className="inline-flex items-center gap-1.5 rounded-md border border-fail bg-fail-soft px-2.5 py-1.5 text-fail">
+              <X className="size-3.5" aria-hidden="true" />
+              <Mono className="text-xs line-through">{n}</Mono>
+              <Tag tone="fail">字典缺失</Tag>
+            </span>
           ))}
         </div>
         <Flow />
@@ -414,10 +447,14 @@ function StoreView({ script, version, cache }: { script: Script; version: string
 
 function NewScriptForm({
   existing,
+  takenFields,
+  sourceFields,
   onCancel,
   onCreate,
 }: {
   existing: string[]
+  takenFields: string[]
+  sourceFields: FieldNode[]
   onCancel: () => void
   onCreate: (s: Script) => void
 }) {
@@ -426,7 +463,12 @@ function NewScriptForm({
   const [output, setOutput] = useState('')
 
   const id = name.trim()
-  const valid = /^[a-z][a-z0-9_]*$/.test(id) && !existing.includes(id) && picked.length > 0 && /^[a-z][a-z0-9_]*$/.test(output.trim())
+  const valid =
+    /^[a-z][a-z0-9_]*$/.test(id) &&
+    !existing.includes(id) &&
+    picked.length > 0 &&
+    /^[a-z][a-z0-9_]*$/.test(output.trim()) &&
+    !takenFields.includes(output.trim())
 
   const toggle = (f: string) =>
     setPicked((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]))

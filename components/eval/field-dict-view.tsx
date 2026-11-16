@@ -1,76 +1,158 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { AlertOctagon, CornerDownRight } from 'lucide-react'
+import { AlertOctagon, Check, CornerDownRight, Gavel, Code2, Plus, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { fieldDict, sampleSimTraj } from '@/lib/mock-data'
+import { sampleSimTraj, type FieldEntry } from '@/lib/mock-data'
+import { isDerivedPath, isRawPath, isValidFieldName, resolvePath, useFieldDict, useScorers } from '@/lib/field-dict-store'
 import { Panel, Tag, Mono, Th, Td } from './primitives'
-
-// TODO(R-1): FieldDict paths must live in the L-sim namespace; rejected at load time.
-const isRaw = (p: string) => p.startsWith('raw.')
-
-function resolve(path: string): unknown {
-  if (isRaw(path)) return undefined
-  const parts = path.replace('[]', '.0').split('.')
-  let cur: unknown = sampleSimTraj
-  for (const p of parts) {
-    if (cur === null || cur === undefined) return undefined
-    cur = (cur as Record<string, unknown>)[p]
-  }
-  return cur
-}
+import { usePreprocessScripts } from './preprocess-pipeline'
 
 const isEmpty = (v: unknown) => v === undefined || v === null || v === ''
 
+export function FieldDictVersionTag() {
+  const { version } = useFieldDict()
+  return <Tag tone="primary"><Mono>{version}</Mono></Tag>
+}
+
 export function FieldDictView() {
-  const [selected, setSelected] = useState(fieldDict[1].logicalName)
-  const entry = fieldDict.find((f) => f.logicalName === selected)!
+  const dict = useFieldDict()
+  const [scorers] = useScorers()
+  const [scripts] = usePreprocessScripts()
+  const [selected, setSelected] = useState('agent_reply')
+  const [adding, setAdding] = useState(false)
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const entry = dict.find(selected) ?? dict.entries[0]
+
+  const refsOf = (name: string) => [
+    ...scorers.filter((s) => s.inputFields.includes(name)).map((s) => ({ kind: 'scorer' as const, id: `${s.id}@${s.version}` })),
+    ...scripts.filter((s) => s.inputs.includes(name)).map((s) => ({ kind: 'script' as const, id: s.name })),
+  ]
 
   const trace = useMemo(() => {
+    if (!entry) return { steps: [], hit: -1 }
     let hit = -1
     const steps = entry.paths.map((p, i) => {
-      const raw = isRaw(p)
-      const value = raw ? undefined : resolve(p)
+      const raw = isRawPath(p)
+      const value = raw ? undefined : resolvePath(p)
       if (hit === -1 && !raw && !isEmpty(value)) hit = i
       return { path: p, raw, value }
     })
     return { steps, hit }
   }, [entry])
 
+  const remove = (name: string) => {
+    dict.remove(name)
+    setConfirming(null)
+    if (selected === name) setSelected(dict.entries.find((e) => e.logicalName !== name)?.logicalName ?? '')
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 p-6 xl:grid-cols-[1fr_380px]">
-      <Panel bodyClassName="p-0">
+      <Panel
+        title={<span className="flex items-center gap-2">字段 <Tag className="font-mono">{dict.entries.length}</Tag></span>}
+        actions={
+          <button
+            type="button"
+            onClick={() => setAdding((v) => !v)}
+            aria-expanded={adding}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="size-3.5" aria-hidden="true" />新增字段
+          </button>
+        }
+        bodyClassName="p-0"
+      >
+        {adding ? (
+          <NewFieldForm
+            existing={dict.names}
+            onCancel={() => setAdding(false)}
+            onCreate={(e) => {
+              dict.add(e)
+              setAdding(false)
+              setSelected(e.logicalName)
+            }}
+          />
+        ) : null}
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40">
-            <tr><Th>逻辑名</Th><Th>物理路径（按序取第一非空）</Th><Th className="text-right">体积估算</Th></tr>
+            <tr><Th>逻辑名</Th><Th>物理路径（按序取第一非空）</Th><Th>引用</Th><Th className="text-right">体积估算</Th><Th className="w-10"><span className="sr-only">操作</span></Th></tr>
           </thead>
           <tbody className="divide-y">
-            {fieldDict.map((f) => {
-              const bad = f.paths.some(isRaw)
+            {dict.entries.map((f) => {
+              const bad = f.paths.some(isRawPath)
+              const refs = refsOf(f.logicalName)
+              const isConfirming = confirming === f.logicalName
               return (
                 <tr
                   key={f.logicalName}
                   onClick={() => setSelected(f.logicalName)}
-                  className={cn('cursor-pointer align-top', f.logicalName === selected ? 'bg-accent/50' : 'hover:bg-muted/40')}
+                  className={cn('group cursor-pointer align-top', isConfirming ? 'bg-fail-soft' : f.logicalName === entry?.logicalName ? 'bg-accent/50' : 'hover:bg-muted/40')}
                 >
                   <Td>
                     <div className="flex items-center gap-2">
                       <Mono className="font-semibold">{f.logicalName}</Mono>
+                      {f.source === 'derived' ? <Tag tone="primary" className="font-mono">派生</Tag> : null}
                       {bad ? <AlertOctagon className="size-3.5 text-fail" aria-label="含非法路径" /> : null}
                     </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">{f.description}</div>
                   </Td>
                   <Td>
                     <ol className="flex flex-col gap-1">
                       {f.paths.map((p, i) => (
                         <li key={p} className="flex items-center gap-1.5">
                           <Mono className="w-3 text-muted-foreground">{i + 1}</Mono>
-                          <Mono className={cn(isRaw(p) && 'rounded bg-fail-soft px-1 text-fail line-through')}>{p}</Mono>
+                          <Mono className={cn(isRawPath(p) && 'rounded bg-fail-soft px-1 text-fail line-through', isDerivedPath(p) && 'text-primary')}>{p}</Mono>
                         </li>
                       ))}
                     </ol>
                   </Td>
+                  <Td>
+                    {refs.length ? (
+                      <div className="flex flex-wrap gap-1">
+                        {refs.map((r) => (
+                          <Tag key={r.id} tone={isConfirming ? 'fail' : 'neutral'} className="font-mono">
+                            {r.kind === 'scorer' ? <Gavel className="size-3" aria-hidden="true" /> : <Code2 className="size-3" aria-hidden="true" />}
+                            {r.id}
+                          </Tag>
+                        ))}
+                      </div>
+                    ) : (
+                      <Mono className="text-muted-foreground">—</Mono>
+                    )}
+                  </Td>
                   <Td className="text-right">
                     <Tag tone={f.avgTokens > 2000 ? 'warn' : 'neutral'} className="font-mono">~{f.avgTokens.toLocaleString()} tok</Tag>
+                  </Td>
+                  <Td className="text-right" onClick={(e) => e.stopPropagation()}>
+                    {isConfirming ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => remove(f.logicalName)}
+                          className="inline-flex h-7 items-center gap-1 rounded-md bg-fail px-2 text-xs text-white hover:bg-fail/90"
+                        >
+                          <Trash2 className="size-3" aria-hidden="true" />删除
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirming(null)}
+                          aria-label="取消"
+                          className="flex size-7 items-center justify-center rounded-md border bg-card text-muted-foreground hover:bg-muted"
+                        >
+                          <X className="size-3.5" aria-hidden="true" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirming(f.logicalName)}
+                        aria-label={`删除 ${f.logicalName}`}
+                        className="flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-fail-soft hover:text-fail focus-visible:opacity-100 group-hover:opacity-100"
+                      >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </button>
+                    )}
                   </Td>
                 </tr>
               )
@@ -80,43 +162,180 @@ export function FieldDictView() {
       </Panel>
 
       <div className="flex flex-col gap-4">
-        <Panel title={<span className="flex items-center gap-2">解析 <Mono>{entry.logicalName}</Mono></span>} actions={<Tag>样例 sim_traj</Tag>}>
-          <ol className="flex flex-col gap-2">
-            {trace.steps.map((s, i) => {
-              const hit = i === trace.hit
-              const skipped = trace.hit !== -1 && i > trace.hit
-              return (
-                <li
-                  key={s.path}
-                  className={cn(
-                    'rounded-md border p-2.5',
-                    hit && 'border-pass bg-pass-soft',
-                    s.raw && 'border-fail bg-fail-soft',
-                    skipped && 'opacity-50',
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <Mono className={cn(s.raw && 'text-fail')}>{s.path}</Mono>
-                    {s.raw ? <Tag tone="fail">加载拒绝</Tag> : hit ? <Tag tone="pass">命中</Tag> : skipped ? <Tag>未访问</Tag> : <Tag tone="na">空</Tag>}
-                  </div>
-                  {!s.raw && !skipped ? (
-                    <div className="mt-1.5 flex items-start gap-1 text-xs text-muted-foreground">
-                      <CornerDownRight className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-                      <Mono className="break-all">{JSON.stringify(s.value ?? null)}</Mono>
+        {entry ? (
+          <Panel title={<span className="flex items-center gap-2">解析 <Mono>{entry.logicalName}</Mono></span>} actions={<Tag>样例 sim_traj</Tag>}>
+            <ol className="flex flex-col gap-2">
+              {trace.steps.map((s, i) => {
+                const hit = i === trace.hit
+                const skipped = trace.hit !== -1 && i > trace.hit
+                return (
+                  <li
+                    key={s.path}
+                    className={cn(
+                      'rounded-md border p-2.5',
+                      hit && 'border-pass bg-pass-soft',
+                      s.raw && 'border-fail bg-fail-soft',
+                      skipped && 'opacity-50',
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <Mono className={cn(s.raw && 'text-fail')}>{s.path}</Mono>
+                      {s.raw ? <Tag tone="fail">加载拒绝</Tag> : hit ? <Tag tone="pass">命中</Tag> : skipped ? <Tag>未访问</Tag> : <Tag tone="na">空</Tag>}
                     </div>
-                  ) : null}
-                  {s.raw ? <p className="mt-1.5 text-xs text-fail">L-raw 永不进评分</p> : null}
-                </li>
-              )
-            })}
-          </ol>
-          <div className="mt-3 rounded-md bg-muted/50 p-2.5 text-xs">
-            结果：{trace.hit === -1 ? <Mono className="text-na">null</Mono> : <Mono className="text-pass">paths[{trace.hit}]</Mono>}
-          </div>
-        </Panel>
+                    {!s.raw && !skipped ? (
+                      <div className="mt-1.5 flex items-start gap-1 text-xs text-muted-foreground">
+                        <CornerDownRight className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                        <Mono className="break-all">{JSON.stringify(s.value ?? null)}</Mono>
+                      </div>
+                    ) : null}
+                    {s.raw ? <p className="mt-1.5 text-xs text-fail">L-raw 永不进评分</p> : null}
+                  </li>
+                )
+              })}
+            </ol>
+            <div className="mt-3 rounded-md bg-muted/50 p-2.5 text-xs">
+              结果：{trace.hit === -1 ? <Mono className="text-na">null</Mono> : <Mono className="text-pass">paths[{trace.hit}]</Mono>}
+            </div>
+          </Panel>
+        ) : null}
         <Panel title="样例 sim_traj" bodyClassName="p-0">
           <pre className="max-h-72 overflow-auto p-3 font-mono text-[11px] leading-relaxed">{JSON.stringify(sampleSimTraj, null, 2)}</pre>
         </Panel>
+      </div>
+    </div>
+  )
+}
+
+function NewFieldForm({ existing, onCancel, onCreate }: { existing: string[]; onCancel: () => void; onCreate: (e: FieldEntry) => void }) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [paths, setPaths] = useState<string[]>([''])
+  const [tokens, setTokens] = useState('')
+
+  const id = name.trim()
+  const cleanPaths = paths.map((p) => p.trim()).filter(Boolean)
+  const nameError = id && !isValidFieldName(id) ? '仅限小写字母、数字、下划线' : existing.includes(id) ? '逻辑名已存在' : null
+  const rawPath = cleanPaths.find(isRawPath)
+  const valid = id && !nameError && cleanPaths.length > 0 && !rawPath
+
+  const preview = useMemo(() => {
+    for (const p of cleanPaths) {
+      if (isRawPath(p)) continue
+      const v = resolvePath(p)
+      if (!isEmpty(v)) return { path: p, value: v }
+    }
+    return null
+  }, [cleanPaths])
+
+  const submit = () => {
+    if (!valid) return
+    const est = Number(tokens)
+    onCreate({
+      logicalName: id,
+      paths: cleanPaths,
+      description: description.trim() || id,
+      avgTokens: Number.isFinite(est) && est > 0 ? Math.round(est) : preview ? Math.max(1, Math.round(JSON.stringify(preview.value).length * 1.4)) : 0,
+      source: cleanPaths.every(isDerivedPath) ? 'derived' : 'sim',
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-3 border-b bg-accent/30 p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">新增字段</span>
+        <button type="button" onClick={onCancel} aria-label="关闭" className="rounded p-1 text-muted-foreground hover:bg-muted">
+          <X className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[200px_1fr_120px]">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">逻辑名</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="doc_title"
+            aria-invalid={Boolean(nameError)}
+            className={cn('h-8 rounded-md border bg-card px-2 font-mono text-xs', nameError && 'border-fail')}
+          />
+          {nameError ? <span className="text-[11px] text-fail">{nameError}</span> : null}
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">说明</span>
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="文档标题"
+            className="h-8 rounded-md border bg-card px-2 text-xs"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">体积估算 tok</span>
+          <input
+            value={tokens}
+            onChange={(e) => setTokens(e.target.value.replace(/\D/g, ''))}
+            inputMode="numeric"
+            placeholder={preview ? '自动' : '0'}
+            className="h-8 rounded-md border bg-card px-2 font-mono text-xs"
+          />
+        </label>
+      </div>
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 text-xs text-muted-foreground">物理路径（按序取第一非空）</legend>
+        {paths.map((p, i) => {
+          const raw = isRawPath(p.trim())
+          return (
+            <div key={i} className="flex items-center gap-1.5">
+              <Mono className="w-3 text-muted-foreground">{i + 1}</Mono>
+              <input
+                value={p}
+                onChange={(e) => setPaths((ps) => ps.map((x, j) => (j === i ? e.target.value : x)))}
+                placeholder="sim_traj.turns[].doc.title"
+                aria-label={`路径 ${i + 1}`}
+                aria-invalid={raw}
+                className={cn('h-8 flex-1 rounded-md border bg-card px-2 font-mono text-xs', raw && 'border-fail text-fail')}
+              />
+              {paths.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setPaths((ps) => ps.filter((_, j) => j !== i))}
+                  aria-label={`移除路径 ${i + 1}`}
+                  className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+                >
+                  <X className="size-3.5" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+          )
+        })}
+        <button
+          type="button"
+          onClick={() => setPaths((ps) => [...ps, ''])}
+          className="ml-4.5 inline-flex h-7 w-fit items-center gap-1 rounded-md border border-dashed px-2 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+        >
+          <Plus className="size-3" aria-hidden="true" />备选路径
+        </button>
+        {rawPath ? <span className="text-[11px] text-fail">L-raw 路径加载时拒绝：{rawPath}</span> : null}
+      </fieldset>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md bg-card px-2.5 py-1.5 text-xs">
+          <CornerDownRight className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+          {preview ? (
+            <>
+              <Tag tone="pass">命中</Tag>
+              <Mono className="truncate">{JSON.stringify(preview.value)}</Mono>
+            </>
+          ) : (
+            <Mono className="text-na">null</Mono>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!valid}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          <Check className="size-3.5" aria-hidden="true" />添加
+        </button>
       </div>
     </div>
   )

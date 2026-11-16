@@ -3,7 +3,8 @@
 import { useRef, useState } from 'react'
 import { Lock, Upload, GitBranch, Check, ShieldCheck, Plus, X, Braces, FlaskConical } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { dimensions as initialDims, fieldDict, scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
+import { dimensions as initialDims, scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
+import { useFieldDict, useScorers } from '@/lib/field-dict-store'
 import { Panel, Tag, Mono, Th, Td, Btn } from './primitives'
 import { PromptEditor, defaultPrompt, defaultBackground, referencedVars, judgeModels } from './prompt-editor'
 import { TrialLab } from './trial-lab'
@@ -16,7 +17,8 @@ const emptyDim = { key: '', name: '', gtKey: '', release: '0.85' }
 
 export function ScorersView() {
   const [dims, setDims] = useState(initialDims)
-  const [list, setList] = useState<Scorer[]>(initialScorers)
+  const [list, setList] = useScorers()
+  const dict = useFieldDict()
   const [sel, setSel] = useState(initialScorers[3].id)
   const [trial, setTrial] = useState<Record<string, Trial>>({})
   const s = list.find((x) => x.id === sel)!
@@ -48,7 +50,8 @@ export function ScorersView() {
   }
 
   const update = (patch: Partial<Scorer>) => setList((l) => l.map((x) => (x.id === s.id ? { ...x, ...patch } : x)))
-  const tokens = s.inputFields.reduce((sum, f) => sum + (fieldDict.find((d) => d.logicalName === f)?.avgTokens ?? 0), 0)
+  const tokens = s.inputFields.reduce((sum, f) => sum + (dict.find(f)?.avgTokens ?? 0), 0)
+  const missingFields = s.inputFields.filter((f) => !dict.names.includes(f))
 
   const [lab, setLab] = useState(false)
 
@@ -196,7 +199,7 @@ export function ScorersView() {
                     model={s.judgeModel ?? judgeModels[0]}
                     promptVersion={s.promptVersion ?? `pt_${s.id.replace('sc_', '')}@v1`}
                     inputFields={s.inputFields}
-                    allFields={fieldDict.map((f) => f.logicalName)}
+                    allFields={dict.names}
                     locked={locked}
                     onChange={update}
                     onAddField={(f) => update({ inputFields: [...s.inputFields, f] })}
@@ -221,7 +224,23 @@ export function ScorersView() {
             <div className="flex flex-col gap-4">
               <Field label={<span className="flex items-center justify-between">输入字段 <span className={cn('font-mono', tokens > 5000 ? 'text-warn' : 'text-muted-foreground')}>≈ {tokens.toLocaleString()} tok / 单元</span></span>}>
                 <ul className="flex flex-col gap-1">
-                  {fieldDict.map((f) => {
+                  {missingFields.map((f) => (
+                    <li key={f} className="flex items-center gap-2 rounded-md border border-fail bg-fail-soft px-2.5 py-1.5">
+                      <Mono className="text-fail line-through">{f}</Mono>
+                      <Tag tone="fail">字典缺失</Tag>
+                      {!locked ? (
+                        <button
+                          type="button"
+                          onClick={() => update({ inputFields: s.inputFields.filter((x) => x !== f) })}
+                          aria-label={`移除 ${f}`}
+                          className="ml-auto flex size-6 items-center justify-center rounded text-fail hover:bg-card"
+                        >
+                          <X className="size-3.5" aria-hidden="true" />
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                  {dict.entries.map((f) => {
                     const on = s.inputFields.includes(f.logicalName)
                     const linked = refs.includes(f.logicalName)
                     return (
