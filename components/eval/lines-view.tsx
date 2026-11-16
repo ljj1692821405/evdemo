@@ -218,13 +218,7 @@ export function LinesView() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h2 className="text-base font-semibold">{agent.name}</h2>
-                  <Mono className="text-muted-foreground">
-                    {line.code}/{agent.code}
-                  </Mono>
                 </div>
-                <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-                  {agent.protocol} · {agent.endpoint || '未配置接入地址'}
-                </p>
               </div>
               <div className="flex items-center gap-2">
                 <ConfirmDelete label={`Agent ${agent.name}`} onConfirm={() => store.removeAgent(line.id, agent.id)} />
