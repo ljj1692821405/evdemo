@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect } from 'react'
-import { CheckCircle2, ChevronLeft, ChevronRight, Trash2, X, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, FileText, Trash2, X, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CaseItem } from '@/lib/mock-data'
+import { caseDimensions, caseExtraFields, caseLabels, caseTurns, caseWorkspace } from '@/lib/case-shape'
 import { Mono, Tag } from './primitives'
 
 type Media = { key: string; url: string; kind: 'image' | 'video' }
@@ -20,10 +21,6 @@ function mediaOf(c: CaseItem): Media[] {
     return []
   })
 }
-
-const display = (value: unknown) => (typeof value === 'string' ? value : JSON.stringify(value, null, 2))
-
-const gtLabel: Record<CaseItem['gtSource'], string> = { case: 'case 自带', dataset: '数据集兜底', missing: '缺 GT' }
 
 export function CaseDetailDialog({
   cases,
@@ -55,14 +52,13 @@ export function CaseDetailDialog({
 
   if (!current) return null
 
+  const turns = caseTurns(current)
+  const workspace = caseWorkspace(current)
+  const labels: [string, string][] = current.raw ? caseLabels(current) : current.tags.map((t) => ['tag', t])
+  const dims = caseDimensions(current)
+  const extra = caseExtraFields(current)
   const media = mediaOf(current)
-  const fields: [string, unknown][] = current.raw
-    ? Object.entries(current.raw).filter(([key]) => key !== 'query')
-    : [
-        ['tags', current.tags.join('、') || '—'],
-        ['工作区', current.workspaceSize],
-        ['GT', current.gtKeys.join('、') || '—'],
-      ]
+  const legacyId = typeof current.raw?.legacy_id === 'string' ? current.raw.legacy_id : ''
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs" onClick={onClose}>
@@ -70,13 +66,13 @@ export function CaseDetailDialog({
         role="dialog"
         aria-modal="true"
         aria-label={`${current.id} 详情`}
-        className="flex h-[88vh] w-full max-w-5xl flex-col rounded-xl border bg-card shadow-2xl"
+        className="flex h-[90vh] w-full max-w-6xl flex-col rounded-xl border bg-card shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex flex-wrap items-center gap-3 border-b px-5 py-3">
           {current.valid ? <CheckCircle2 className="size-5 text-pass" aria-label="合规" /> : <XCircle className="size-5 text-fail" aria-label="拒收" />}
           <Mono className="text-base font-semibold">{current.id}</Mono>
-          <Tag tone={current.gtSource === 'missing' ? 'warn' : 'pass'}>{gtLabel[current.gtSource]}</Tag>
+          {legacyId ? <Mono className="text-sm text-muted-foreground">{legacyId}</Mono> : null}
           {current.invalidReason ? <span className="text-sm text-fail">{current.invalidReason}</span> : null}
 
           <div className="ml-auto flex items-center gap-1">
@@ -113,17 +109,87 @@ export function CaseDetailDialog({
 
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="flex min-h-0 flex-col gap-6 overflow-y-auto p-5">
-            <section className="flex flex-col gap-2">
-              <h3 className="text-sm font-semibold">Query</h3>
-              <ol className="flex flex-col gap-2">
-                {current.query.map((q, i) => (
-                  <li key={i} className="flex gap-3 rounded-lg border bg-muted/30 p-3">
-                    <Mono className="mt-0.5 shrink-0 text-sm text-muted-foreground">{i + 1}</Mono>
-                    <p className={cn('min-w-0 whitespace-pre-wrap text-pretty text-sm leading-relaxed', !q && 'text-fail')}>{q || '（空）'}</p>
+            {dims.length || labels.length ? (
+              <section className="flex flex-col gap-2">
+                {dims.length ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {dims.map((d) => <Tag key={d} tone="primary" className="px-2 py-1 text-xs">{d}</Tag>)}
+                  </div>
+                ) : null}
+                {labels.length ? (
+                  <dl className="flex flex-wrap gap-1.5">
+                    {labels.map(([key, value], i) => (
+                      <div key={`${key}:${i}`} className="flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm">
+                        {current.raw ? <dt className="text-muted-foreground">{key}</dt> : null}
+                        <dd className="font-medium">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+              </section>
+            ) : null}
+
+            <section className="flex flex-col gap-3">
+              <h3 className="text-sm font-semibold">对话</h3>
+              <ol className="flex flex-col gap-3">
+                {turns.map((t) => (
+                  <li key={t.no} className="overflow-hidden rounded-lg border">
+                    <div className="flex gap-3 bg-muted/30 p-3">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-xs font-semibold text-primary-foreground">{t.no}</span>
+                      <p className={cn('min-w-0 whitespace-pre-wrap text-pretty text-sm leading-relaxed', !t.query && 'text-fail')}>{t.query || '（空）'}</p>
+                    </div>
+                    {t.gt.length ? (
+                      <div className="flex flex-col gap-3 border-t p-3">
+                        {t.gt.map((g) => (
+                          <div key={g.key} className="flex flex-col gap-1.5">
+                            <Mono className="text-sm font-semibold text-primary">{g.key}</Mono>
+                            {g.points.length ? (
+                              <ol className="flex flex-col gap-1.5">
+                                {g.points.map((p, i) => (
+                                  <li key={i} className="flex gap-2 text-sm leading-relaxed">
+                                    <Mono className="mt-0.5 shrink-0 text-sm text-muted-foreground">{i + 1}</Mono>
+                                    <span className="min-w-0 text-pretty">{p}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">本轮无 GT</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ol>
             </section>
+
+            {workspace ? (
+              <section className="flex flex-col gap-2">
+                <h3 className="text-sm font-semibold">初始工作区</h3>
+                {workspace.name || workspace.description ? (
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    {workspace.name ? <div className="text-sm font-medium">{workspace.name}</div> : null}
+                    {workspace.description ? <p className="mt-1 text-pretty text-sm leading-relaxed text-muted-foreground">{workspace.description}</p> : null}
+                  </div>
+                ) : null}
+                {workspace.files.map((f) => (
+                  <details key={f.path} className="rounded-lg border">
+                    <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm">
+                      <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
+                      <Mono className="text-sm font-semibold">{f.path}</Mono>
+                      <Mono className="ml-auto text-sm text-muted-foreground">{(f.content.length / 1024).toFixed(1)} KB</Mono>
+                    </summary>
+                    <pre className="max-h-96 overflow-auto whitespace-pre-wrap border-t bg-muted/20 p-3 font-mono text-[13px] leading-relaxed">{f.content}</pre>
+                  </details>
+                ))}
+              </section>
+            ) : !current.raw ? (
+              <section className="flex flex-col gap-2">
+                <h3 className="text-sm font-semibold">初始工作区</h3>
+                <Mono className="text-sm">{current.workspaceSize}</Mono>
+              </section>
+            ) : null}
 
             {media.length ? (
               <section className="flex flex-col gap-2">
@@ -144,17 +210,19 @@ export function CaseDetailDialog({
               </section>
             ) : null}
 
-            <section className="flex flex-col gap-2">
-              <h3 className="text-sm font-semibold">字段</h3>
-              <dl className="divide-y rounded-lg border text-sm">
-                {fields.map(([key, value]) => (
-                  <div key={key} className="grid grid-cols-[160px_minmax(0,1fr)] gap-3 px-3 py-2">
-                    <dt><Mono className="break-all text-sm text-muted-foreground">{key}</Mono></dt>
-                    <dd className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">{display(value)}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
+            {extra.length ? (
+              <section className="flex flex-col gap-2">
+                <h3 className="text-sm font-semibold">其他字段</h3>
+                <dl className="divide-y rounded-lg border text-sm">
+                  {extra.map(([key, value]) => (
+                    <div key={key} className="grid grid-cols-[160px_minmax(0,1fr)] gap-3 px-3 py-2">
+                      <dt><Mono className="break-all text-sm text-muted-foreground">{key}</Mono></dt>
+                      <dd className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">{JSON.stringify(value, null, 2)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ) : null}
           </div>
 
           <nav aria-label="全部 case" className="min-h-0 overflow-y-auto border-t p-4 lg:border-l lg:border-t-0">

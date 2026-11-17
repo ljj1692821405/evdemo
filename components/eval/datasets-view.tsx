@@ -5,6 +5,7 @@ import { CheckCircle2, XCircle, Plus, X, Upload, Check, FileUp, Trash2 } from 'l
 import { cn } from '@/lib/utils'
 import { snapshots, type CaseItem } from '@/lib/mock-data'
 import { useDatasets } from '@/lib/dataset-store'
+import { caseDimensions, parseCaseText } from '@/lib/case-shape'
 import { useScope } from '@/lib/tenant-store'
 import { Panel, Tag, Mono, Th, Td, Btn } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
@@ -12,40 +13,6 @@ import { CaseDetailDialog } from './case-detail-dialog'
 
 type UploadResult = { file: string; ok: number; rejected: number } | null
 type PendingDelete = { kind: 'dataset'; id: string } | { kind: 'case'; id: string } | null
-
-function parseCases(text: string, datasetId: string, startIndex: number): CaseItem[] {
-  const trimmed = text.trim()
-  let rows: unknown[] = []
-  try {
-    const parsed = JSON.parse(trimmed)
-    rows = Array.isArray(parsed) ? parsed : [parsed]
-  } catch {
-    rows = trimmed.split(/\r?\n/).filter(Boolean).map((line) => {
-      try { return JSON.parse(line) } catch { return { __bad: line } }
-    })
-  }
-  return rows.map((raw, i) => {
-    const r = (raw ?? {}) as Record<string, unknown>
-    const bad = '__bad' in r
-    const id = typeof r.id === 'string' && r.id ? r.id : `case_${String(startIndex + i + 1).padStart(4, '0')}`
-    const q = r.query
-    const query = Array.isArray(q) ? q.map(String) : typeof q === 'string' ? [q] : []
-    const gt = r.gt && typeof r.gt === 'object' ? Object.keys(r.gt as object) : []
-    const invalidReason = bad ? 'JSON 解析失败' : query.length === 0 ? '缺少 query' : query.some((x) => !x.trim()) ? 'query 含空字符串' : undefined
-    return {
-      id,
-      datasetId,
-      query: query.length ? query : [''],
-      tags: Array.isArray(r.tags) ? r.tags.map(String) : [],
-      workspaceSize: r.initial_workspace ? `${(JSON.stringify(r.initial_workspace).length / 1024).toFixed(1)} KB` : '—',
-      gtSource: gt.length ? 'case' : 'missing',
-      gtKeys: gt,
-      valid: !invalidReason,
-      invalidReason,
-      raw: bad ? undefined : r,
-    }
-  })
-}
 
 const snapshotImpact = (datasetId: string) => {
   const n = snapshots.filter((s) => s.datasetId === datasetId).length
@@ -83,13 +50,23 @@ function AgentDatasets() {
     setCreating(false)
   }
 
-  const onFile = async (file: File) => {
-    if (!ds) return
-    const added = parseCases(await file.text(), ds.id, list.length)
-    const existing = new Set(cases.map((c) => c.id))
-    const unique = added.map((c) => (existing.has(c.id) ? { ...c, id: `${c.id}_${ds.id.slice(-4)}` } : c))
-    store.addCases(ds.id, unique)
-    setUpload({ file: file.name, ok: unique.filter((c) => c.valid).length, rejected: unique.filter((c) => !c.valid).length })
+  const onFiles = async (files: File[]) => {
+    if (!ds || files.length === 0) return
+    const taken = new Set(cases.map((c) => c.id))
+    const added: CaseItem[] = []
+    for (const file of files) {
+      for (const c of parseCaseText(await file.text(), ds.id, list.length + added.length)) {
+        const id = taken.has(c.id) ? `${c.id}_${ds.id.slice(-4)}` : c.id
+        taken.add(id)
+        added.push({ ...c, id })
+      }
+    }
+    store.addCases(ds.id, added)
+    setUpload({
+      file: files.length === 1 ? files[0].name : `${files.length} 个文件`,
+      ok: added.filter((c) => c.valid).length,
+      rejected: added.filter((c) => !c.valid).length,
+    })
   }
 
   const pendingDataset = pending?.kind === 'dataset' ? datasets.find((d) => d.id === pending.id) : undefined
@@ -113,7 +90,7 @@ function AgentDatasets() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 p-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-4 p-6 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)]">
       <Panel
         title="数据集"
         actions={
@@ -187,10 +164,11 @@ function AgentDatasets() {
                 ref={fileRef}
                 type="file"
                 accept=".jsonl,.json,application/json"
+                multiple
                 className="sr-only"
                 tabIndex={-1}
                 aria-hidden="true"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }}
+                onChange={(e) => { onFiles(Array.from(e.target.files ?? [])); e.target.value = '' }}
               />
               <Btn size="sm" variant="primary" onClick={() => fileRef.current?.click()}>
                 <Upload className="size-3.5" aria-hidden="true" />上传 case
@@ -214,7 +192,7 @@ function AgentDatasets() {
               type="button"
               onClick={() => fileRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) onFile(f) }}
+              onDrop={(e) => { e.preventDefault(); onFiles(Array.from(e.dataTransfer.files ?? [])) }}
               className="m-4 flex w-[calc(100%-2rem)] flex-col items-center gap-2 rounded-lg border-2 border-dashed py-12 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary"
             >
               <FileUp className="size-6" aria-hidden="true" />
@@ -229,8 +207,7 @@ function AgentDatasets() {
                   <Th className="text-xs">Case</Th>
                   <Th className="text-xs">Query</Th>
                   <Th className="text-right text-xs">轮数</Th>
-                  <Th className="text-right text-xs">工作区</Th>
-                  <Th className="text-xs">GT</Th>
+                  <Th className="text-xs">维度</Th>
                   <Th className="w-10"><span className="sr-only">操作</span></Th>
                 </tr>
               </thead>
@@ -242,14 +219,12 @@ function AgentDatasets() {
                       <button type="button" onClick={(e) => { e.stopPropagation(); setOpenCase(c.id) }} className="font-mono text-sm font-semibold hover:text-primary hover:underline">
                         {c.id}
                       </button>
+                      {c.gtSource === 'missing' ? <Tag tone="warn" className="ml-2">缺 GT</Tag> : null}
                     </Td>
-                    <Td className="max-w-md"><span className="line-clamp-1">{c.query[0] || <span className="text-fail">（空）</span>}</span></Td>
+                    <Td className="w-full max-w-0"><span className="block truncate">{c.query[0] || <span className="text-fail">（空）</span>}</span></Td>
                     <Td className="text-right"><Mono className="text-sm">{c.query.length}</Mono></Td>
-                    <Td className="whitespace-nowrap text-right"><Mono className="text-sm text-muted-foreground">{c.workspaceSize}</Mono></Td>
-                    <Td>
-                      <span className={cn('whitespace-nowrap', c.gtSource === 'missing' && 'text-warn')}>
-                        {c.gtSource === 'case' ? 'case 自带' : c.gtSource === 'dataset' ? '数据集兜底' : '缺 GT'}
-                      </span>
+                    <Td className="whitespace-nowrap">
+                      {caseDimensions(c).length ? caseDimensions(c).map((d) => <span key={d} className="block">{d}</span>) : <span className="text-muted-foreground">—</span>}
                     </Td>
                     <Td className="text-right">
                       <button
