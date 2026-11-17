@@ -1,11 +1,12 @@
 'use client'
 
-import { cases as seedCases, datasets as seedDatasets, type CaseItem, type Dataset } from './mock-data'
+import { goldenCases, goldenDatasets } from './golden-seed'
+import type { CaseItem, Dataset } from './mock-data'
 import { useAgentShared } from './tenant-store'
 
 type DatasetState = { datasets: Dataset[]; cases: CaseItem[] }
 
-const seedState = (isDemo: boolean): DatasetState => (isDemo ? { datasets: seedDatasets, cases: seedCases } : { datasets: [], cases: [] })
+const seedState = (isDemo: boolean): DatasetState => (isDemo ? { datasets: goldenDatasets, cases: goldenCases } : { datasets: [], cases: [] })
 
 export function useDatasets() {
   const [state, setState] = useAgentShared<DatasetState>('datasets', seedState)
