@@ -1,5 +1,4 @@
-import Link from 'next/link'
-import { PageHeader, Mono, Tag } from '@/components/eval/primitives'
+import { PageHeader, Tag } from '@/components/eval/primitives'
 import { ReviewBoard } from '@/components/eval/review-board'
 import { RunPicker } from '@/components/eval/run-picker'
 import { AgentDataGate } from '@/components/eval/agent-data-gate'
@@ -26,22 +25,13 @@ async function ReviewContent({ searchParams }: { searchParams: Promise<{ run?: s
       </div>
     )
   }
-  const { run, exp, dimKeys } = ctx
+  const { run, dimKeys } = ctx
   return (
     <div>
       <PageHeader
         index={8}
         title="核对看板"
         back="/review"
-        meta={
-          <span className="flex items-center gap-2">
-            <Mono>{run.id}</Mono>
-            <span aria-hidden="true">·</span>
-            <Link href={`/experiments?id=${exp.id}`} className="hover:text-foreground hover:underline">{exp.name}</Link>
-            <span aria-hidden="true">·</span>
-            <Mono>{exp.scorerIds.join(' · ')}</Mono>
-          </span>
-        }
         actions={<Tag tone="primary">review_schema · 3 选项</Tag>}
       />
       <ReviewBoard key={run.id} dimKeys={dimKeys} />
