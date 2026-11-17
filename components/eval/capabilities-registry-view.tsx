@@ -244,11 +244,11 @@ export function CapabilitiesRegistryView() {
               {/* 导航 Tabs */}
               <div className="mt-4 flex flex-wrap gap-1 border-b pb-3">
                 {[
-                  { id: 'overview', label: '概览与契约' },
-                  { id: 'inputs', label: `Input Schema (${currentCap.inputSchema.length})` },
-                  { id: 'dimensions', label: `输出维度 (${currentCap.supportedDimensions.length})` },
-                  { id: 'execution', label: '执行入口与代码' },
-                  { id: 'playground', label: 'Playground 调试' },
+                  { id: 'overview', label: '概览' },
+                  { id: 'inputs', label: 'Input' },
+                  { id: 'dimensions', label: '适用评测维度' },
+                  { id: 'execution', label: '执行入口' },
+                  { id: 'playground', label: 'Playground' },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -269,29 +269,20 @@ export function CapabilitiesRegistryView() {
               {/* Tab 1: 概览与契约 */}
               {viewTab === 'overview' && (
                 <div className="mt-4 space-y-4 text-xs">
-                  {/* 输入与输出契约两列对比 */}
+                  {/* 动态 Input 与适用评测维度 */}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="rounded-lg border p-3.5">
                       <div className="flex items-center justify-between border-b pb-2">
                         <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                           <Layers className="size-3.5 text-primary" />
-                          Input Schema (输入参数)
+                          Input
                         </span>
-                        <span className="font-mono text-[11px] text-muted-foreground">{currentCap.inputSchema.length} 字段</span>
+                        <Tag tone="primary">按需映射</Tag>
                       </div>
                       <div className="mt-2.5 divide-y text-xs">
                         {currentCap.inputSchema.map((field) => (
-                          <div key={field.name} className="py-2 flex items-start justify-between gap-2">
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <Mono className="font-semibold text-foreground">{field.name}</Mono>
-                                {field.required ? (
-                                  <Tag tone="warn" className="text-[9px] px-1 py-0">必填</Tag>
-                                ) : (
-                                  <Tag tone="neutral" className="text-[9px] px-1 py-0">可选</Tag>
-                                )}
-                              </div>
-                            </div>
+                          <div key={field.name} className="py-2 flex items-center justify-between gap-2">
+                            <Mono className="font-semibold text-foreground">{splitLabel(field.label).en || field.name}</Mono>
                             <Tag tone="primary" className="font-mono text-[10px]">{field.type}</Tag>
                           </div>
                         ))}
@@ -302,20 +293,15 @@ export function CapabilitiesRegistryView() {
                       <div className="flex items-center justify-between border-b pb-2">
                         <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                           <CheckCircle2 className="size-3.5 text-pass" />
-                          Output Schema (输出指标)
+                          适用评测维度
                         </span>
-                        <span className="font-mono text-[11px] text-muted-foreground">{currentCap.outputSchema.metrics.length} 指标</span>
+                        <Tag tone="pass">可复用</Tag>
                       </div>
                       <div className="mt-2.5 divide-y text-xs">
-                        {currentCap.outputSchema.metrics.map((m) => (
-                          <div key={m.key} className="py-2 flex items-start justify-between gap-2">
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-foreground">{m.name}</span>
-                                <Mono className="text-[10px] text-muted-foreground">({m.key})</Mono>
-                              </div>
-                            </div>
-                            <Tag tone="pass" className="font-mono text-[10px]">{m.type}{m.range ? ` [${m.range[0]}-${m.range[1]}]` : ''}</Tag>
+                        {currentCap.supportedDimensions.map((dim) => (
+                          <div key={dim.key} className="py-2 flex items-center justify-between gap-2">
+                            <span className="font-medium text-foreground">{dim.name}</span>
+                            <Tag tone="pass" className="font-mono text-[10px]">{dim.defaultScoreType === 'scale_5' ? '1~5分' : '0/1'}</Tag>
                           </div>
                         ))}
                       </div>
