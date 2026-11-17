@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronLeft, ChevronRight, MessageSquare, Bot, Wrench, Gavel, FileDiff, Zap, Check, X, ScrollText, GitCompareArrows, ListChecks } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, MessageSquare, Bot, Wrench, Gavel, FileDiff, Zap, Check, X, ScrollText, GitCompareArrows, ListChecks, MessageSquarePlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dimensions, reviewSchema, reviewTurns as allTurns, type Verdict } from '@/lib/mock-data'
 import { agreementStats, pct } from '@/lib/stats'
@@ -21,7 +21,8 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
   const [human, setHuman] = useState<Record<string, Verdict>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState(false)
-  const noteRef = useRef<HTMLTextAreaElement>(null)
+  const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({})
+  const noteInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   const turn = reviewTurns[idx]
   const turnKey = `${turn.caseId}#${turn.turnNo}`
@@ -55,7 +56,15 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
       else if (e.key === 'k' || e.key === 'ArrowLeft') { e.preventDefault(); go(-1) }
       else if (e.key === 'ArrowDown') { e.preventDefault(); setFocusDim((f) => Math.min(turn.judgments.length - 1, f + 1)) }
       else if (e.key === 'ArrowUp') { e.preventDefault(); setFocusDim((f) => Math.max(0, f - 1)) }
-      else if (e.key === 'n') { e.preventDefault(); noteRef.current?.focus() }
+      else if (e.key === 'n') {
+        e.preventDefault()
+        const j = turn.judgments[focusDim]
+        if (j) {
+          const k = key(turn.caseId, turn.turnNo, j.dim)
+          setOpenNotes((s) => ({ ...s, [k]: true }))
+          setTimeout(() => noteInputRefs.current[k]?.focus(), 0)
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -232,25 +241,37 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
             </Section>
           ) : null}
 
-          <Section icon={Gavel} n={5} label="裁判">
-            <ul className="flex flex-col gap-2">
+          <Section icon={FileDiff} n={5} label="工作区">
+            <WorkspaceDiff key={turnKey} meta={turn.workspace.meta} before={turn.workspace.before} after={turn.workspace.after} />
+          </Section>
+
+          <Section icon={Gavel} n={6} label="裁判审计">
+            <ul className="flex flex-col gap-3">
               {turn.judgments.map((j, i) => {
                 const dim = dimensions.find((d) => d.key === j.dim)!
-                const h = human[key(turn.caseId, turn.turnNo, j.dim)]
+                const k = key(turn.caseId, turn.turnNo, j.dim)
+                const h = human[k]
                 const focused = i === focusDim
+                const isDisagree = Boolean(h && h !== j.verdict)
+                const noteVal = notes[k] ?? ''
+                const showNote = Boolean(openNotes[k] || noteVal || isDisagree)
                 return (
                   <li
                     key={j.dim}
                     onClick={() => setFocusDim(i)}
-                    className={cn('rounded-md border p-3 transition-colors', focused ? 'border-primary ring-2 ring-primary/15' : 'hover:border-input')}
+                    className={cn(
+                      'rounded-lg border p-4 transition-colors',
+                      focused ? 'border-primary ring-2 ring-primary/15' : 'hover:border-input',
+                      isDisagree && 'border-warn/50 bg-warn-soft/20',
+                    )}
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <Mono className="text-muted-foreground">{j.dim}</Mono>
-                      <span className="text-sm font-medium">{dim.name}</span>
+                      <span className="text-sm font-semibold">{dim.name}</span>
                       <VerdictBadge verdict={j.verdict} />
                       {j.shortCircuit ? <Tag tone="primary" className="gap-1"><Zap className="size-3" aria-hidden="true" />short_circuit</Tag> : null}
-                      {h && h !== j.verdict ? <Tag tone="warn" className="gap-1"><GitCompareArrows className="size-3" aria-hidden="true" />分歧</Tag> : null}
-                      <div className="ml-auto flex items-center gap-1" role="radiogroup" aria-label={`${dim.name} 人工判定`}>
+                      {isDisagree ? <Tag tone="warn" className="gap-1 font-semibold"><GitCompareArrows className="size-3" aria-hidden="true" />判定分歧</Tag> : null}
+                      <div className="ml-auto flex items-center gap-1.5" role="radiogroup" aria-label={`${dim.name} 人工判定`}>
                         {reviewSchema.options.map((o) => {
                           const active = h === o.value
                           return (
@@ -259,12 +280,19 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
                               type="button"
                               role="radio"
                               aria-checked={active}
-                              onClick={(e) => { e.stopPropagation(); setFocusDim(i); setHuman((s) => ({ ...s, [key(turn.caseId, turn.turnNo, j.dim)]: o.value })) }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setFocusDim(i)
+                                setHuman((s) => ({ ...s, [k]: o.value }))
+                                if (o.value !== j.verdict) {
+                                  setOpenNotes((s) => ({ ...s, [k]: true }))
+                                }
+                              }}
                               className={cn(
-                                'inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors',
-                                active && o.tone === 'pass' && 'border-pass bg-pass text-white',
-                                active && o.tone === 'fail' && 'border-fail bg-fail text-white',
-                                active && o.tone === 'na' && 'border-na bg-na text-white',
+                                'inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors',
+                                active && o.tone === 'pass' && 'border-pass bg-pass text-white shadow-xs',
+                                active && o.tone === 'fail' && 'border-fail bg-fail text-white shadow-xs',
+                                active && o.tone === 'na' && 'border-na bg-na text-white shadow-xs',
                                 !active && 'bg-card hover:bg-muted',
                               )}
                             >
@@ -275,35 +303,66 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
                         })}
                       </div>
                     </div>
-                    <div className="mt-2.5 flex gap-2.5 rounded-md border-l-2 border-primary/50 bg-muted/40 py-2 pl-3 pr-2">
+
+                    <div className="mt-3 flex gap-2.5 rounded-md border-l-2 border-primary/50 bg-muted/40 py-2.5 pl-3 pr-2.5">
                       <span className="flex shrink-0 items-start gap-1 pt-0.5 text-[11px] font-medium text-primary">
                         <ScrollText className="size-3.5" aria-hidden="true" />
-                        裁判证据
+                        裁判物证
                       </span>
                       <p className="min-w-0 whitespace-pre-line text-pretty text-[13px] leading-relaxed text-foreground">{j.reason}</p>
                     </div>
-                    {j.evidence ? <div className="mt-2"><EvidenceView evidence={j.evidence} /></div> : null}
+
+                    {j.evidence ? <div className="mt-2.5"><EvidenceView evidence={j.evidence} /></div> : null}
+
+                    {/* Integrated note input right below score and evidence */}
+                    <div className="mt-3 border-t pt-2.5" onClick={(e) => e.stopPropagation()}>
+                      {showNote ? (
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1 font-medium">
+                              <MessageSquarePlus className="size-3.5 text-primary" aria-hidden="true" />
+                              复核备注
+                              {isDisagree ? <span className="text-warn">（产生分歧，建议填写理由）</span> : null}
+                            </span>
+                            {!noteVal && !isDisagree ? (
+                              <button
+                                type="button"
+                                onClick={() => setOpenNotes((s) => ({ ...s, [k]: false }))}
+                                className="text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                              >
+                                收起
+                              </button>
+                            ) : null}
+                          </div>
+                          <input
+                            ref={(el) => { noteInputRefs.current[k] = el }}
+                            type="text"
+                            value={notes[k] ?? ''}
+                            placeholder={isDisagree ? '请简述分歧原因，例如：Agent 已按要求写回，但裁判误判为未完成...' : '选填：记录对该判定或准绳的意见...'}
+                            onChange={(e) => setNotes((n) => ({ ...n, [k]: e.target.value }))}
+                            className="h-8 w-full rounded-md border border-input bg-background px-3 text-xs focus-visible:outline-2 focus-visible:outline-ring"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenNotes((s) => ({ ...s, [k]: true }))
+                            setTimeout(() => noteInputRefs.current[k]?.focus(), 0)
+                          }}
+                          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"
+                        >
+                          <MessageSquarePlus className="size-3.5" aria-hidden="true" />
+                          <span>添加复核备注</span>
+                          <kbd className="font-mono text-[10px] text-muted-foreground">n</kbd>
+                        </button>
+                      )}
+                    </div>
                   </li>
                 )
               })}
             </ul>
           </Section>
-
-          <Section icon={FileDiff} n={6} label="工作区">
-            <WorkspaceDiff key={turnKey} meta={turn.workspace.meta} before={turn.workspace.before} after={turn.workspace.after} />
-          </Section>
-
-          <div className="px-4 py-3">
-            <label htmlFor="review-note" className="mb-1 block text-xs text-muted-foreground">备注</label>
-            <textarea
-              id="review-note"
-              ref={noteRef}
-              rows={2}
-              value={notes[turnKey] ?? ''}
-              onChange={(e) => setNotes((n) => ({ ...n, [turnKey]: e.target.value }))}
-              className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring"
-            />
-          </div>
         </div>
       </article>
 
