@@ -1,14 +1,30 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Play, Snowflake, ChevronDown, Lock } from 'lucide-react'
+import { ChevronDown, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { datasets, experiments, runs, simJobs as initialJobs, snapshots as initialSnaps, type SimJob, type SimJobStatus, type Snapshot } from '@/lib/mock-data'
-import { Panel, Tag, Mono, Th, Td, Btn, Progress } from './primitives'
+import { Panel, Mono, Th, Td, Btn, Progress } from './primitives'
 
-const statusTone: Record<SimJobStatus, 'neutral' | 'primary' | 'pass' | 'warn' | 'fail'> = {
-  pending: 'neutral',
+const statusLabel: Record<SimJobStatus, string> = {
+  pending: '排队中',
+  running: '运行中',
+  completed: '已完成',
+  partial_failed: '部分失败',
+  failed: '失败',
+}
+
+const statusDot: Record<SimJobStatus, string> = {
+  pending: 'bg-na',
+  running: 'bg-primary',
+  completed: 'bg-pass',
+  partial_failed: 'bg-warn',
+  failed: 'bg-fail',
+}
+
+const progressTone: Record<SimJobStatus, 'primary' | 'pass' | 'warn' | 'fail'> = {
+  pending: 'primary',
   running: 'primary',
   completed: 'pass',
   partial_failed: 'warn',
@@ -17,12 +33,21 @@ const statusTone: Record<SimJobStatus, 'neutral' | 'primary' | 'pass' | 'warn' |
 
 const scripts = ['simulate.master_sse:run', 'simulate.clarify_v2:run']
 
+const runParams = [
+  { label: '并发', value: '3' },
+  { label: '超时', value: '180s' },
+  { label: '重试', value: '1 次' },
+  { label: '失败率阈值', value: '20%' },
+]
+
+const selectCls = 'h-9 rounded-md border border-input bg-card px-2.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring'
+
 export function SimulationsView() {
   const [jobs, setJobs] = useState<SimJob[]>(initialJobs)
   const [snaps, setSnaps] = useState<Snapshot[]>(initialSnaps)
   const [dsId, setDsId] = useState(datasets[0].id)
   const [script, setScript] = useState(scripts[0])
-  const [openJob, setOpenJob] = useState<string | null>('job_1102')
+  const [openJob, setOpenJob] = useState<string | null>(null)
   const [openSnap, setOpenSnap] = useState<string | null>(null)
 
   const active = jobs.some((j) => j.status === 'running' || j.status === 'pending')
@@ -63,140 +88,215 @@ export function SimulationsView() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <Panel>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            数据集
-            <select value={dsId} onChange={(e) => setDsId(e.target.value)} className="h-8 min-w-48 rounded-md border border-input bg-card px-2 text-sm text-foreground">
-              {datasets.map((d) => <option key={d.id} value={d.id}>{d.name} · {d.caseCount} case</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            simulate 脚本
-            <select value={script} onChange={(e) => setScript(e.target.value)} className="h-8 min-w-56 rounded-md border border-input bg-card px-2 font-mono text-xs text-foreground">
-              {scripts.map((s) => <option key={s}>{s}</option>)}
-            </select>
-          </label>
-          <div className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground">
-            <span>并发 3</span><span>超时 180s</span><span>重试 1 次 / 5s</span><span>失败率阈值 20%</span>
-          </div>
-          <Btn variant="primary" className="ml-auto" onClick={start}>
-            <Play className="size-4" aria-hidden="true" />开始仿真
-          </Btn>
-        </div>
-      </Panel>
+    <div className="flex flex-col gap-6 p-6">
+      <form
+        className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4"
+        onSubmit={(e) => {
+          e.preventDefault()
+          start()
+        }}
+      >
+        <label className="flex min-w-52 flex-col gap-1.5 text-sm font-medium">
+          数据集
+          <select value={dsId} onChange={(e) => setDsId(e.target.value)} className={cn(selectCls, 'font-normal')}>
+            {datasets.map((d) => <option key={d.id} value={d.id}>{d.name}（{d.caseCount} case）</option>)}
+          </select>
+        </label>
+        <label className="flex min-w-60 flex-col gap-1.5 text-sm font-medium">
+          仿真脚本
+          <select value={script} onChange={(e) => setScript(e.target.value)} className={cn(selectCls, 'font-mono font-normal')}>
+            {scripts.map((s) => <option key={s}>{s}</option>)}
+          </select>
+        </label>
+        <Btn variant="primary" type="submit" className="ml-auto h-9 px-4">
+          <Play className="size-4" aria-hidden="true" />开始仿真
+        </Btn>
+      </form>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Panel title="SimulationJob" bodyClassName="p-0">
-          <ul className="divide-y">
+      <Panel title="仿真任务" bodyClassName="overflow-x-auto p-0">
+        <table className="w-full text-sm">
+          <thead className="border-b bg-muted/40">
+            <tr>
+              <Th className="text-xs">任务</Th>
+              <Th className="text-xs">数据集</Th>
+              <Th className="text-xs">状态</Th>
+              <Th className="text-xs">进度</Th>
+              <Th className="text-right text-xs">失败率</Th>
+              <Th className="text-xs">快照</Th>
+              <Th className="text-xs">开始时间</Th>
+              <Th className="w-10"><span className="sr-only">展开</span></Th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
             {jobs.map((j) => {
               const ds = datasets.find((d) => d.id === j.datasetId)!
               const rate = j.total ? j.failed / j.total : 0
               const open = openJob === j.id
               return (
-                <li key={j.id}>
-                  <button type="button" onClick={() => setOpenJob(open ? null : j.id)} aria-expanded={open} className="flex w-full flex-col gap-2 px-4 py-3 text-left hover:bg-muted/30">
-                    <div className="flex items-center gap-2">
-                      <Mono className="font-semibold">{j.id}</Mono>
-                      <Tag tone={statusTone[j.status]}>{j.status}</Tag>
-                      <span className="truncate text-xs text-muted-foreground">{ds.name}</span>
-                      <span className="ml-auto font-mono text-[11px] text-muted-foreground">{j.startedAt}</span>
-                      <ChevronDown className={cn('size-4 text-muted-foreground transition-transform', open && 'rotate-180')} aria-hidden="true" />
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Progress value={j.done / j.total} tone={j.status === 'failed' ? 'fail' : j.status === 'partial_failed' ? 'warn' : j.status === 'completed' ? 'pass' : 'primary'} />
-                      <Mono className="w-16 shrink-0 text-right">{j.done}/{j.total}</Mono>
-                      <Mono className={cn('w-20 shrink-0 text-right', rate >= 0.2 ? 'text-fail' : rate > 0 ? 'text-warn' : 'text-muted-foreground')}>
-                        失败 {(rate * 100).toFixed(1)}%
-                      </Mono>
-                    </div>
-                  </button>
-                  {open ? (
-                    <div className="border-t bg-muted/20 px-4 py-3 text-xs">
-                      <div className="mb-2 flex flex-wrap items-center gap-2 text-muted-foreground">
-                        <Mono>{j.script}</Mono>
-                        <span aria-hidden="true">→</span>
-                        {j.snapshotId ? <Tag tone="primary" className="gap-1"><Snowflake className="size-3" aria-hidden="true" />{j.snapshotId}</Tag> : j.status === 'failed' ? <Tag tone="fail">不生成快照</Tag> : <Tag>待冻结</Tag>}
+                <Fragment key={j.id}>
+                  <tr onClick={() => setOpenJob(open ? null : j.id)} className={cn('cursor-pointer', open ? 'bg-accent/40' : 'hover:bg-muted/40')}>
+                    <Td><Mono className="text-sm font-semibold">{j.id}</Mono></Td>
+                    <Td>{ds.name}</Td>
+                    <Td>
+                      <span className="flex items-center gap-2 whitespace-nowrap">
+                        <span className={cn('size-2 rounded-full', statusDot[j.status], j.status === 'running' && 'animate-pulse')} aria-hidden="true" />
+                        {statusLabel[j.status]}
+                      </span>
+                    </Td>
+                    <Td>
+                      <div className="flex items-center gap-3">
+                        <Progress value={j.done / j.total} tone={progressTone[j.status]} className="w-28" />
+                        <Mono className="whitespace-nowrap text-sm">{j.done}/{j.total}</Mono>
                       </div>
-                      {j.errors.length ? (
-                        <table className="w-full">
-                          <thead><tr><Th className="px-0">case</Th><Th>error_type</Th><Th>详情</Th></tr></thead>
-                          <tbody>
-                            {j.errors.map((e) => (
-                              <tr key={e.caseId} className="border-t">
-                                <Td className="px-0"><Mono>{e.caseId}</Mono></Td>
-                                <Td><Tag tone={e.type === 'invalid_schema' ? 'fail' : 'warn'} className="font-mono">{e.type}</Tag></Td>
-                                <Td className="text-muted-foreground">{e.detail}</Td>
-                              </tr>
+                    </Td>
+                    <Td className="text-right">
+                      <Mono className={cn('text-sm', rate >= 0.2 ? 'font-semibold text-fail' : rate > 0 ? 'text-warn' : 'text-muted-foreground')}>{(rate * 100).toFixed(1)}%</Mono>
+                    </Td>
+                    <Td>
+                      {j.snapshotId ? <Mono className="text-sm">{j.snapshotId}</Mono> : <span className="text-muted-foreground">{j.status === 'failed' ? '未生成' : '—'}</span>}
+                    </Td>
+                    <Td className="whitespace-nowrap text-muted-foreground">{j.startedAt}</Td>
+                    <Td className="text-right">
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        aria-label={`${j.id} 详情`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setOpenJob(open ? null : j.id)
+                        }}
+                        className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        <ChevronDown className={cn('size-4 transition-transform', open && 'rotate-180')} aria-hidden="true" />
+                      </button>
+                    </Td>
+                  </tr>
+                  {open ? (
+                    <tr className="bg-muted/20">
+                      <td colSpan={8} className="px-4 py-4">
+                        <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
+                          <dl className="flex flex-col gap-2 text-sm">
+                            <div className="flex flex-col gap-0.5">
+                              <dt className="text-xs text-muted-foreground">脚本</dt>
+                              <dd><Mono className="break-all text-sm">{j.script}</Mono></dd>
+                            </div>
+                            {runParams.map((p) => (
+                              <div key={p.label} className="flex items-center justify-between gap-2">
+                                <dt className="text-muted-foreground">{p.label}</dt>
+                                <dd><Mono className="text-sm">{p.value}</Mono></dd>
+                              </div>
                             ))}
-                          </tbody>
-                        </table>
-                      ) : <p className="text-muted-foreground">无错误记录</p>}
-                    </div>
+                          </dl>
+                          {j.errors.length ? (
+                            <table className="w-full self-start rounded-md border bg-card text-sm">
+                              <thead className="border-b">
+                                <tr><Th className="text-xs">Case</Th><Th className="text-xs">错误类型</Th><Th className="text-xs">详情</Th></tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                {j.errors.map((e) => (
+                                  <tr key={e.caseId}>
+                                    <Td><Mono className="text-sm">{e.caseId}</Mono></Td>
+                                    <Td><Mono className={cn('text-sm', e.type === 'invalid_schema' ? 'text-fail' : 'text-warn')}>{e.type}</Mono></Td>
+                                    <Td>{e.detail}</Td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <p className="self-center text-sm text-muted-foreground">无错误</p>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
                   ) : null}
-                </li>
+                </Fragment>
               )
             })}
-          </ul>
-        </Panel>
+          </tbody>
+        </table>
+      </Panel>
 
-        <Panel title={<span className="flex items-center gap-2">Snapshot <Lock className="size-3.5 text-muted-foreground" aria-label="只读" /></span>} bodyClassName="p-0">
-          <ul className="divide-y">
+      <Panel title="快照" bodyClassName="overflow-x-auto p-0">
+        <table className="w-full text-sm">
+          <thead className="border-b bg-muted/40">
+            <tr>
+              <Th className="text-xs">快照</Th>
+              <Th className="text-xs">数据集</Th>
+              <Th className="text-right text-xs">Case</Th>
+              <Th className="text-right text-xs">Turn</Th>
+              <Th className="text-xs">冻结时间</Th>
+              <Th className="text-right text-xs">实验</Th>
+              <Th className="text-right text-xs">执行</Th>
+              <Th className="w-28"><span className="sr-only">操作</span></Th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
             {snaps.map((s) => {
               const ds = datasets.find((d) => d.id === s.datasetId)!
               const refs = experiments.filter((e) => e.snapshotId === s.id)
               const runCount = runs.filter((r) => refs.some((e) => e.id === r.experimentId)).length
               const open = openSnap === s.id
               return (
-                <li key={s.id}>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-                    <div className="min-w-40">
-                      <div className="flex items-center gap-2">
-                        <Snowflake className="size-3.5 text-primary" aria-hidden="true" />
-                        <Mono className="font-semibold">{s.id}</Mono>
-                        {s.status === 'partial_failed' ? <Tag tone="warn">缺 {s.missingCases} case</Tag> : null}
-                      </div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">{ds.name} · <Mono>{s.jobId}</Mono> · {s.frozenAt}</div>
-                    </div>
-                    <Mono className="text-muted-foreground">{s.cases} case · {s.turns} turn</Mono>
-                    <div className="ml-auto flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setOpenSnap(open ? null : s.id)}
-                        aria-expanded={open}
-                        disabled={!refs.length}
-                        className="inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                <Fragment key={s.id}>
+                  <tr className={cn(open && 'bg-accent/40')}>
+                    <Td><Mono className="text-sm font-semibold">{s.id}</Mono></Td>
+                    <Td>{ds.name}</Td>
+                    <Td className="text-right">
+                      <Mono className="text-sm">{s.cases}</Mono>
+                      {s.missingCases ? <span className="ml-2 whitespace-nowrap text-warn">缺 <span className="font-mono">{s.missingCases}</span></span> : null}
+                    </Td>
+                    <Td className="text-right"><Mono className="text-sm">{s.turns}</Mono></Td>
+                    <Td className="whitespace-nowrap text-muted-foreground">{s.frozenAt}</Td>
+                    <Td className="text-right">
+                      {refs.length ? (
+                        <button
+                          type="button"
+                          onClick={() => setOpenSnap(open ? null : s.id)}
+                          aria-expanded={open}
+                          aria-label={`${s.id} 的 ${refs.length} 个实验`}
+                          className="inline-flex h-7 items-center gap-1 rounded-md px-2 font-mono text-sm text-primary hover:bg-accent"
+                        >
+                          {refs.length}
+                          <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} aria-hidden="true" />
+                        </button>
+                      ) : (
+                        <Mono className="pr-2 text-sm text-muted-foreground">0</Mono>
+                      )}
+                    </Td>
+                    <Td className="text-right"><Mono className="text-sm">{runCount}</Mono></Td>
+                    <Td className="text-right">
+                      <Link
+                        href={`/experiments?snapshot=${s.id}`}
+                        className="inline-flex h-8 items-center whitespace-nowrap rounded-md border border-input bg-card px-3 text-sm font-medium hover:bg-muted"
                       >
-                        明细 <span className="font-semibold">{refs.length}</span>
-                        <ChevronDown className={cn('size-3 transition-transform', open && 'rotate-180')} aria-hidden="true" />
-                      </button>
-                      <Tag className="py-1">执行 {runCount} 次</Tag>
-                      <Link href={`/experiments?snapshot=${s.id}`} className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90">建实验</Link>
-                    </div>
-                  </div>
+                        建实验
+                      </Link>
+                    </Td>
+                  </tr>
                   {open && refs.length ? (
-                    <table className="w-full border-t bg-muted/20 text-xs">
-                      <tbody className="divide-y">
-                        {refs.map((e) => {
-                          const last = runs.filter((r) => r.experimentId === e.id)[0]
-                          return (
-                            <tr key={e.id}>
-                              <Td className="pl-10"><Link href={`/experiments?id=${e.id}`} className="text-primary hover:underline">{e.name}</Link></Td>
-                              <Td className="text-muted-foreground">{e.createdBy}</Td>
-                              <Td className="text-right font-mono text-muted-foreground">{last?.startedAt ?? '未执行'}</Td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                    <tr className="bg-muted/20">
+                      <td colSpan={8} className="px-4 py-3">
+                        <ul className="flex flex-col divide-y rounded-md border bg-card text-sm">
+                          {refs.map((e) => {
+                            const last = runs.filter((r) => r.experimentId === e.id)[0]
+                            return (
+                              <li key={e.id} className="flex items-center gap-4 px-3 py-2">
+                                <Link href={`/experiments?id=${e.id}`} className="min-w-0 flex-1 truncate text-primary hover:underline">{e.name}</Link>
+                                <span className="text-muted-foreground">{e.createdBy}</span>
+                                <span className="w-28 whitespace-nowrap text-right text-muted-foreground">{last?.startedAt ?? '未执行'}</span>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </td>
+                    </tr>
                   ) : null}
-                </li>
+                </Fragment>
               )
             })}
-          </ul>
-        </Panel>
-      </div>
+          </tbody>
+        </table>
+      </Panel>
     </div>
   )
 }
