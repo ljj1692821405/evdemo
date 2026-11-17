@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>黄金集评测 · 人工核查台</title>
+<style>
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 13px; color: #1f2328; background: #f6f8fa;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+header {
+  flex: 0 0 auto; background: #fff; border-bottom: 1px solid #d0d7de;
+  padding: 8px 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+header h1 { font-size: 15px; margin: 0; font-weight: 650; white-space: nowrap; }
+.stat { display: flex; gap: 10px; font-size: 12px; color: #57606a; }
+.stat b { color: #1f2328; }
+.chip {
+  border: 1px solid #d0d7de; background: #fff; border-radius: 999px;
+  padding: 2px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; user-select: none;
+}
+.chip:hover { background: #f3f4f6; }
+.chip.on { background: #0969da; border-color: #0969da; color: #fff; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+input[type=search] {
+  border: 1px solid #d0d7de; border-radius: 6px; padding: 4px 8px; font-size: 12px;
+  width: 180px; outline: none;
+}
+input[type=search]:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,.12); }
+label.tgl { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #57606a; cursor: pointer; user-select: none; }
+button.act {
+  border: 1px solid #d0d7de; background: #fff; border-radius: 6px;
+  padding: 4px 10px; font-size: 12px; cursor: pointer;
+}
+button.act:hover { background: #f3f4f6; }
+main { flex: 1 1 auto; display: flex; min-height: 0; }
+#list {
+  flex: 0 0 310px; background: #fff; border-right: 1px solid #d0d7de;
+  overflow-y: auto; padding: 6px 0;
+}
+.grp { padding: 7px 12px 4px; font-size: 11px; font-weight: 700; color: #57606a; letter-spacing: .3px; }
+.grp span { font-weight: 400; color: #8c959f; }
+.grp .dimname { display: block; font-weight: 700; color: #3d4451; letter-spacing: .3px; }
+/* 维度统计独立一行：裁判通过 X/N → 人工通过 Y/N */
+.grp .dimstat {
+  display: block; margin-top: 1px; font-weight: 400; font-size: 11px;
+  color: #8c959f; letter-spacing: 0;
+  font-family: -apple-system, "Microsoft YaHei", sans-serif;
+}
+.grp .dimstat b { color: #3d4451; font-weight: 600; font-variant-numeric: tabular-nums; }
+.grp .arrow { color: #afb8c1; margin: 0 1px; }
+.item {
+  padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 7px;
+  border-left: 3px solid transparent; font-size: 12.5px;
+}
+.item:hover { background: #f6f8fa; }
+.item.on { background: #ddf4ff; border-left-color: #0969da; }
+.item .cid { flex: 1 1 auto; font-family: Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
+.b-pass { background: #dafbe1; color: #1a7f37; }
+.b-fail { background: #ffebe9; color: #cf222e; }
+.b-ns   { background: #eaeef2; color: #57606a; }
+.r { font-size: 11px; color: #8c959f; font-variant-numeric: tabular-nums; }
+.mk { font-size: 10px; padding: 0 4px; border-radius: 3px; background: #fff8c5; color: #9a6700; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mk.done { background: #dafbe1; color: #1a7f37; }
+/* 与人工标注不一致的小标志 */
+.mk.diff { background: #cf222e; color: #fff; letter-spacing: .3px; cursor: help; }
+.mk.diff:hover { background: #a40e26; }
+/* 本轮 AI 分数小标签 */
+.ai-score {
+  font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 3px;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  background: #eaeef2; color: #57606a; border: 1px solid #d0d7de;
+}
+.ai-score.ok  { background: #dafbe1; color: #1a7f37; border-color: #aceebb; }
+.ai-score.bad { background: #ffebe9; color: #cf222e; border-color: #ffcecb; }
+#detail { flex: 1 1 auto; overflow-y: auto; padding: 14px 18px 60px; }
+.dhead { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+.dhead h2 { margin: 0 0 6px; font-size: 16px; font-family: Consolas, monospace; }
+.dhead .meta { display: flex; gap: 16px; font-size: 12px; color: #57606a; flex-wrap: wrap; }
+.dhead .why { margin-top: 8px; padding: 8px 10px; background: #fff8c5; border-left: 3px solid #d4a72c; border-radius: 4px; font-size: 12.5px; }
+.turn { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; margin-bottom: 14px; overflow: hidden; }
+.turn.bad { border-color: #ffb3ad; }
+.thead {
+  display: flex; align-items: center; gap: 9px; padding: 8px 12px;
+  background: #f6f8fa; border-bottom: 1px solid #eaeef2;
+}
+.thead .tn { font-weight: 700; font-size: 12.5px; }
+.tbody { padding: 12px 14px; }
+.sec { margin-bottom: 12px; }
+.sec:last-child { margin-bottom: 0; }
+.sec-h {
+  font-size: 11px; font-weight: 700; color: #57606a; letter-spacing: .4px;
+  margin-bottom: 5px; display: flex; align-items: center; gap: 6px;
+}
+.q { background: #f6f8fa; border-left: 3px solid #0969da; padding: 7px 10px; border-radius: 4px; font-size: 13px; }
+.a { background: #fbfcfd; border: 1px solid #eaeef2; padding: 8px 10px; border-radius: 4px; white-space: pre-wrap; line-height: 1.66; font-size: 12.5px; max-height: 320px; overflow-y: auto; }
+.a.clip { max-height: 88px; overflow: hidden; }
+.more { font-size: 11.5px; color: #0969da; cursor: pointer; margin-top: 3px; display: inline-block; }
+.tool { display: inline-block; font-family: Consolas, monospace; font-size: 11.5px; background: #eef2f6; border: 1px solid #d8dee4; border-radius: 4px; padding: 1px 7px; margin: 0 4px 4px 0; }
+.tool.w { background: #ffeef0; border-color: #ffcecb; color: #a40e26; font-weight: 600; }
+.wsbar { font-size: 11.5px; color: #57606a; margin-bottom: 6px; }
+.wsbar .add { color: #1a7f37; font-weight: 700; }
+.wsbar .del { color: #cf222e; font-weight: 700; }
+.fblock { border: 1px solid #eaeef2; border-radius: 6px; margin-bottom: 8px; overflow: hidden; }
+.fhead { padding: 5px 10px; background: #f6f8fa; font-family: Consolas, monospace; font-size: 12px; display: flex; gap: 8px; align-items: center; }
+.fhead .st { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 3px; font-family: inherit; }
+.st-added { background: #dafbe1; color: #1a7f37; }
+.st-modified { background: #fff8c5; color: #9a6700; }
+.st-deleted { background: #ffebe9; color: #cf222e; }
+.st-same { background: #eaeef2; color: #57606a; }
+.fhead .cnt { margin-left: auto; font-size: 11px; color: #8c959f; }
+pre.diff { margin: 0; padding: 4px 0; overflow-x: auto; font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; line-height: 1.55; background: #fff; }
+pre.diff .ln { display: block; white-space: pre; padding: 0 10px 0 0; }
+pre.diff .ln .no { display: inline-block; width: 46px; text-align: right; color: #c4ccd3; user-select: none; padding-right: 10px; font-size: 11px; }
+pre.diff .ln.add { background: #e6ffec; }
+pre.diff .ln.del { background: #ffebe9; }
+pre.diff .ln.gap { color: #8c959f; background: #fafbfc; font-style: italic; }
+.same-note { padding: 5px 10px; font-family: Consolas, monospace; font-size: 12px; color: #57606a; background: #fff; border: 1px solid #eaeef2; border-radius: 6px; margin-bottom: 8px; }
+/* 元信息表格 */
+.meta-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; background: #fff; border: 1px solid #eaeef2; border-radius: 6px; overflow: hidden; }
+.meta-table th { background: #f6f8fa; text-align: left; padding: 5px 8px; font-weight: 600; color: #57606a; font-size: 11px; border-bottom: 1px solid #eaeef2; width: 18%; }
+.meta-table td { padding: 5px 8px; border-bottom: 1px solid #eaeef2; vertical-align: top; word-break: break-all; }
+.meta-table tr:last-child td, .meta-table tr:last-child th { border-bottom: none; }
+.meta-table tr.chg { background: #fffdf5; }
+.meta-table tr.chg td.v-after { background: #e6ffec; font-weight: 600; color: #1a7f37; }
+.meta-table td.v-before { color: #57606a; }
+.meta-table .chg-tag { font-size: 10px; padding: 0 4px; border-radius: 3px; background: #ffebe9; color: #cf222e; font-weight: 700; margin-left: 4px; }
+/* references 标识条 */
+.ref-banner { display: flex; align-items: center; gap: 8px; padding: 5px 10px; background: #f0f7ff; border: 1px solid #c8e1ff; border-radius: 6px; margin-bottom: 8px; font-size: 12px; }
+.ref-banner b { color: #0969da; }
+/* 完整内容前后对照 */
+.pair-sec { margin-bottom: 12px; }
+.pair-sec-h { font-size: 11.5px; font-weight: 700; color: #1f2328; margin-bottom: 6px; display: flex; align-items: center; gap: 7px; }
+.pair-sec-h .cnt { font-weight: 400; color: #8c959f; font-size: 11px; }
+.pair-item { border: 1px solid #eaeef2; border-radius: 6px; margin-bottom: 10px; overflow: hidden; }
+.pair-head { display: flex; align-items: center; gap: 8px; padding: 5px 10px; background: #f6f8fa; border-bottom: 1px solid #eaeef2; font-family: Consolas, monospace; font-size: 12px; }
+.pair-head .st { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 3px; }
+.pair-head .delta { margin-left: auto; font-size: 11px; color: #8c959f; font-family: -apple-system, sans-serif; }
+.pair-head .delta b { color: #1f2328; }
+/* 同步/独立滚动开关 */
+.sync-btn {
+  border: 1px solid #d0d7de; background: #fff; border-radius: 999px;
+  padding: 1px 9px; font-size: 11px; cursor: pointer; line-height: 1.6;
+  font-family: -apple-system, "Microsoft YaHei", sans-serif; color: #57606a;
+  white-space: nowrap; user-select: none;
+}
+.sync-btn:hover { background: #f3f4f6; border-color: #afb8c1; }
+.sync-btn.on { background: #0969da; border-color: #0969da; color: #fff; }
+.sync-btn.on:hover { background: #0860ca; }
+.pair { display: flex; align-items: stretch; }
+.pane { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; }
+.pane + .pane { border-left: 2px solid #d0d7de; }
+.pane-h { padding: 3px 10px; font-size: 10.5px; font-weight: 700; letter-spacing: .4px; color: #57606a; background: #fafbfc; border-bottom: 1px solid #eaeef2; display: flex; gap: 6px; }
+.pane-h.b { color: #9a6700; }
+.pane-h.a { color: #1a7f37; }
+.pane pre { margin: 0; padding: 6px 0; max-height: 460px; overflow: auto; font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; line-height: 1.55; background: #fff; tab-size: 2; }
+.pane pre .ln { display: block; white-space: pre; padding: 0 10px 0 0; }
+.pane pre .ln .no { display: inline-block; width: 44px; text-align: right; color: #c4ccd3; user-select: none; padding-right: 10px; font-size: 11px; }
+.pane .absent { padding: 16px; text-align: center; color: #8c959f; font-size: 12px; font-style: italic; }
+.pane.same-note-pane pre { background: #fcfdfe; }
+.judge { border: 1px solid #d0d7de; border-radius: 6px; padding: 9px 11px; background: #fbfcfd; }
+.judge.f0 { border-color: #ffcecb; background: #fff8f8; }
+.judge.f1 { border-color: #aceebb; background: #f6fff8; }
+.jrow { display: flex; gap: 8px; align-items: baseline; margin-bottom: 3px; }
+.jkey { font-family: Consolas, monospace; font-size: 11.5px; color: #57606a; }
+.jreason { font-size: 13px; font-weight: 600; margin: 4px 0; line-height: 1.55; }
+.jevidence { font-size: 12px; color: #57606a; line-height: 1.6; border-top: 1px dashed #d8dee4; padding-top: 5px; margin-top: 5px; }
+
+/* 裁判提示词与输入字段 */
+.jt { border: 1px solid #d0d7de; border-radius: 6px; background: #fbfcfd; overflow: hidden; }
+.jt + .jt { margin-top: 8px; }
+.jt summary {
+  cursor: pointer; padding: 8px 11px; font-size: 12px; font-weight: 600;
+  color: #24292f; background: #f6f8fa; list-style: none;
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+}
+.jt summary::-webkit-details-marker { display: none; }
+.jt summary::before { content: "▸"; color: #8c959f; font-size: 10px; }
+.jt[open] summary::before { content: "▾"; }
+.jt summary:hover { background: #eef1f4; }
+.jt-body { padding: 10px 12px; border-top: 1px solid #eaeef2; }
+.jt-sub { font-size: 11.5px; font-weight: 700; color: #57606a; margin: 10px 0 5px; }
+.jt-sub:first-child { margin-top: 0; }
+.jt-pre {
+  font-family: Consolas, "Courier New", monospace; font-size: 11.5px; line-height: 1.62;
+  background: #fff; border: 1px solid #eaeef2; border-radius: 5px;
+  padding: 9px 11px; margin: 0; max-height: 340px; overflow: auto;
+  white-space: pre-wrap; word-break: break-word; color: #24292f;
+}
+.jt-meta { font-size: 11.5px; color: #57606a; display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 7px; }
+.jt-meta code { font-family: Consolas, monospace; background: #eef1f4; padding: 1px 5px; border-radius: 3px; color: #24292f; }
+.jt-skip { background: #fff8e5; border: 1px solid #e3c168; border-radius: 5px; padding: 7px 10px; font-size: 12px; color: #7a5b00; }
+.jt-kv { width: 100%; border-collapse: collapse; font-size: 11.8px; }
+.jt-kv td { padding: 3px 8px; border-bottom: 1px solid #eef1f4; vertical-align: top; }
+.jt-kv td:first-child { color: #57606a; font-family: Consolas, monospace; white-space: nowrap; width: 1%; }
+
+/* 预期标杆（GT） */
+.gt-card { border: 1px solid #d8b4fe; background: #faf5ff; border-radius: 6px; padding: 10px 12px; }
+.gt-item + .gt-item { border-top: 1px dashed #e9d5ff; margin-top: 8px; padding-top: 8px; }
+.gt-item-title { font-size: 12px; font-weight: 700; color: #6b21a8; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.gt-points { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.65; color: #2e1065; }
+.gt-points li { margin-bottom: 3px; }
+.gt-points li b { color: #581c87; }
+
+/* ---- 澄清卡 / 写入确认卡 ---- */
+.cc-wrap { border: 1px solid #a5d6ff; background: #f4f9ff; border-radius: 6px; padding: 10px 12px; }
+.cc-card + .cc-card { border-top: 1px dashed #b6e0ff; margin-top: 9px; padding-top: 9px; }
+.cc-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 6px; }
+.cc-idx { font-family: Consolas, monospace; font-size: 11px; color: #0550ae; background: #ddf4ff; border: 1px solid #a5d6ff; border-radius: 3px; padding: 0 5px; }
+.cc-title { font-size: 13px; font-weight: 700; color: #0a3069; }
+.cc-tag { font-size: 10.5px; padding: 1px 6px; border-radius: 9px; border: 1px solid #d0d7de; background: #fff; color: #57606a; }
+.cc-tag.multi { border-color: #d4a72c; background: #fff8c5; color: #7d4e00; }
+.cc-tag.single { border-color: #54aeff; background: #ddf4ff; color: #0550ae; }
+.cc-tag.custom { border-color: #c297ff; background: #fbefff; color: #6639ba; }
+.cc-opts { margin: 0; padding: 0; list-style: none; }
+.cc-opt { font-size: 12.5px; line-height: 1.6; padding: 3px 8px; border-radius: 4px; margin-bottom: 3px; background: #fff; border: 1px solid #e3e9ef; }
+.cc-opt.rec { border-color: #4ac26b; background: #eaffea; }
+.cc-opt .cc-rec-flag { font-size: 10.5px; font-weight: 700; color: #1a7f37; background: #dafbe1; border: 1px solid #4ac26b; border-radius: 3px; padding: 0 5px; margin-right: 6px; }
+.cc-opt-desc { display: block; color: #57606a; font-size: 11.5px; margin-top: 1px; }
+.cc-empty { color: #8b949e; font-size: 12px; }
+.wc-box { border: 1px solid #ffcecb; background: #fff5f5; border-radius: 6px; padding: 9px 12px; margin-top: 8px; }
+.wc-title { font-size: 12.5px; font-weight: 700; color: #a40e26; margin-bottom: 5px; }
+.wc-path { font-family: Consolas, monospace; font-size: 11.5px; background: #fff; border: 1px solid #ffcecb; border-radius: 3px; padding: 0 6px; margin-right: 5px; }
+/* 写入确认卡的「实际选择」条 */
+.wc-chosen { display: flex; align-items: center; gap: 8px; margin-top: 7px; padding: 5px 9px; border-radius: 5px; background: #fff; border: 1px dashed #d0d7de; }
+.wc-chosen-k { font-size: 11px; color: #57606a; font-weight: 700; }
+.wc-chosen-v { font-size: 12.5px; font-weight: 700; padding: 1px 8px; border-radius: 4px; }
+.wc-chosen.yes { border-color: #aceebb; background: #f2fff5; }
+.wc-chosen.yes .wc-chosen-v { color: #1a7f37; background: #dafbe1; border: 1px solid #4ac26b; }
+.wc-chosen.no { border-color: #ffcecb; background: #fff8f8; }
+.wc-chosen.no .wc-chosen-v { color: #a40e26; background: #ffeceb; border: 1px solid #ff8182; }
+.wc-chosen.none .wc-chosen-meta { color: #8c959f; }
+.wc-chosen-meta { font-size: 11px; color: #8c959f; margin-left: auto; }
+/* 选项数量偏离提示：灰色弱提示，不标红 */
+.cc-tag.off { border-color: #d8dee4; background: #f6f8fa; color: #8c959f; }
+.gt-empty { font-size: 12px; color: #8c959f; font-style: italic; }
+
+.empty { color: #8c959f; font-size: 12.5px; padding: 14px; text-align: center; }
+.hint { font-size: 11px; color: #8c959f; }
+.hidden { display: none !important; }
+kbd { font-family: Consolas, monospace; background: #f6f8fa; border: 1px solid #d0d7de; border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; font-size: 11px; }
+.vote { display: flex; gap: 6px; margin-top: 7px; align-items: center; }
+.vote button { font-size: 11.5px; padding: 2px 9px; border-radius: 5px; border: 1px solid #d0d7de; background: #fff; cursor: pointer; }
+.vote button.v-ok.on { background: #1a7f37; border-color: #1a7f37; color: #fff; }
+.vote button.v-bad.on { background: #cf222e; border-color: #cf222e; color: #fff; }
+/* 每轮人工标记 */
+.turn-vote { margin-left: auto; display: flex; align-items: center; gap: 5px; }
+.tv-btn { font-size: 11px; padding: 1px 8px; border-radius: 4px; border: 1px solid #d0d7de; background: #fff; cursor: pointer; line-height: 1.7; }
+.tv-btn:hover { background: #f3f4f6; }
+.tv-btn.ok.on { background: #1a7f37; border-color: #1a7f37; color: #fff; }
+.tv-btn.bad.on { background: #cf222e; border-color: #cf222e; color: #fff; }
+.tv-note { border: 1px solid #d0d7de; border-radius: 4px; font-size: 11px; padding: 1px 6px; width: 170px; outline: none; }
+.tv-note:focus { border-color: #0969da; box-shadow: 0 0 0 2px rgba(9,105,218,.12); }
+.na-tag { margin-left: auto; font-size: 11px; color: #8c959f; }
+.turn.marked-pass { border-color: #aceebb; }
+.turn.marked-fail { border-color: #ffb3ad; }
+</style>
+</head>
+<body>
+<header>
+  <h1>黄金集评测 · 裁判核查台</h1>
+  <div class="stat" id="stat"></div>
+  <input type="search" id="q" placeholder="搜索 case / 关键词…">
+  <label class="tgl"><input type="checkbox" id="onlyFail" checked>仅看未通过</label>
+  <label class="tgl"><input type="checkbox" id="onlyBadTurn">仅看扣分轮次</label>
+  <div class="chips" id="dimChips"></div>
+  <button class="act" id="expBtn">导出复核结论</button>
+  <button class="act" id="dlBtn">下载带标记的 HTML</button>
+  <button class="act" id="resetBtn">清空标记</button>
+  <span class="hint" id="batchTag"></span>
+  <span class="hint"><kbd>J</kbd>/<kbd>K</kbd> 切换用例</span>
+</header>
+<main>
+  <div id="list"></div>
+  <div id="detail"><div class="empty">← 从左侧选择一条用例开始核查</div></div>
+</main>
+<script id="DATA" type="application/json">/*__DATA__*/</script>
+<script id="VOTES" type="application/json">/*__VOTES__*/</script>
+<script>
+"use strict";
+const CASES = JSON.parse(document.getElementById("DATA").textContent);
+/* 在任何渲染发生前抓取原始 DOM 快照，供「下载带标记的 HTML」复用。
+   此时 #list / #detail / #stat 均为模板初始态，保证导出的副本是干净的。 */
+const ORIG_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+const DIMS = [];
+CASES.forEach(c => { if (!DIMS.find(d => d.key === c.dim)) DIMS.push({ key: c.dim, desc: c.dim_desc }); });
+
+const S = { dim: null, q: "", onlyFail: true, onlyBadTurn: false, sel: null };
+let PAIR_SEQ = 0;              // 每个 before/after 对比组的唯一 id
+const SYNC_STATE = {};         // pairId -> true(联动) / 未记录(默认独立)
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
+
+function dimStat(key) {
+  const list = CASES.filter(c => c.dim === key);
+  let aiPass = 0, humanPass = 0, naN = 0, unrevN = 0;
+  list.forEach(c => {
+    if (c.status === "PASS") aiPass++;
+    const r = humanCaseVerdict(c);
+    if (r.v === true) humanPass++;
+    else if (r.why === "na") naN++;
+    else if (r.why === "unreviewed") unrevN++;
+  });
+  return {
+    total: list.length,
+    fail: list.filter(c => c.status === "FAIL").length,
+    aiPass: aiPass,
+    humanPass: humanPass,
+    naN: naN,
+    unrevN: unrevN,
+    delta: humanPass - aiPass,
+  };
+}
+
+/* 人工审核视角下该用例是否通过
+   规则：人工认可裁判 → 沿用 AI 结论；人工否定裁判 → 反转 AI 结论
+   返回 { v: true|false|null, why: ""|"na"|"unreviewed" } */
+function humanCaseVerdict(c) {
+  const scored = c.turns.filter(t => t.scores.some(s => s.score === 0 || s.score === 1));
+  if (!scored.length) return { v: null, why: "na" };
+  for (const t of scored) {
+    const v = getTurnVote(c.id, t.turn);
+    if (!v || !v.verdict) return { v: null, why: "unreviewed" };
+  }
+  for (const t of scored) {
+    const v = getTurnVote(c.id, t.turn);
+    const vals = t.scores.filter(s => s.score === 0 || s.score === 1).map(s => s.score);
+    const aiPass = vals.every(x => x === 1);
+    const humanPass = (v.verdict === "pass") ? aiPass : !aiPass;
+    if (!humanPass) return { v: false, why: "" };
+  }
+  return { v: true, why: "" };
+}
+function passCount(c) {
+  if (c.status === "PASS") return 0;
+  let n = 0;
+  Object.values(c.dim_summary || {}).forEach(v => { n += (v.failed_turns || []).length; });
+  return n;
+}
+function filtered() {
+  const q = S.q.trim().toLowerCase();
+  return CASES.filter(c => {
+    if (S.dim && c.dim !== S.dim) return false;
+    if (S.onlyFail && c.status !== "FAIL") return false;
+    if (q) {
+      const hay = (c.id + " " + c.dim_desc + " " +
+        c.turns.map(t => t.query + " " + t.reply).join(" ")).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+/* ---- 顶部统计 + 维度筛选 ---- */
+function renderTop() {
+  const tot = CASES.length, fail = CASES.filter(c => c.status === "FAIL").length;
+  const ns = CASES.filter(c => c.status === "UNSCORED").length;
+  const vs = voteStats();
+  const bt = $("batchTag");
+  if (bt) {
+    bt.textContent = "批次 " + String(BATCH_ID).slice(0, 10);
+    bt.title = "批次指纹（由本页数据内容生成，不同批次互不干扰）：\n" + BATCH_ID;
+  }
+  $("stat").innerHTML =
+    `<span>用例 <b>${tot}</b></span><span>未通过 <b style="color:#cf222e">${fail}</b></span>` +
+    `<span>未打分 <b>${ns}</b></span>` +
+    `<span>已复核 <b style="color:#0969da">${vs.turns}</b> 轮</span>` +
+    `<span style="color:#1a7f37">裁判判对 ${vs.pass}</span>` +
+    `<span style="color:#cf222e">裁判判错 ${vs.fail}</span>` +
+    `<span>当前显示 <b id="visN">0</b></span>`;
+  const box = $("dimChips");
+  box.innerHTML = "";
+  DIMS.forEach(d => {
+    const s = dimStat(d.key);
+    const el = document.createElement("span");
+    el.className = "chip" + (S.dim === d.key ? " on" : "");
+    el.textContent = `${d.key}（${s.fail}/${s.total}）`;
+    el.title = d.desc;
+    el.onclick = () => { S.dim = (S.dim === d.key ? null : d.key); renderTop(); renderList(); };
+    box.appendChild(el);
+  });
+}
+
+/* ---- 左栏列表 ---- */
+function renderList() {
+  const list = filtered();
+  $("visN").textContent = list.length;
+  const box = $("list");
+  box.innerHTML = "";
+  if (!list.length) { box.innerHTML = `<div class="empty">没有符合条件的用例</div>`; return; }
+
+  let curDim = null;
+  list.forEach(c => {
+    if (c.dim !== curDim) {
+      curDim = c.dim;
+      const s = dimStat(c.dim);
+      const g = document.createElement("div");
+      g.className = "grp";
+      const tail = [];
+      if (s.naN) tail.push(`N/A ${s.naN}`);
+      if (s.unrevN) tail.push(`未复核 ${s.unrevN}`);
+      g.innerHTML = `<span class="dimname">${esc(c.dim_desc)}</span>` +
+        `<span class="dimstat">（裁判通过 <b>${s.aiPass}</b>/${s.total}` +
+          ` <span class="arrow">→</span> ` +
+          `人工通过 <b>${s.humanPass}</b>/${s.total}` +
+          (tail.length ? `　${tail.join(" · ")}` : "") +
+        `）</span>`;
+      box.appendChild(g);
+    }
+    const el = document.createElement("div");
+    el.className = "item" + (S.sel === c.id ? " on" : "");
+    el.dataset.cid = c.id;
+    const cls = c.status === "PASS" ? "b-pass" : (c.status === "FAIL" ? "b-fail" : "b-ns");
+    const scoredN = c.turns.filter(t => t.scores.some(s => s.score === 0 || s.score === 1)).length;
+    const markedN = c.turns.filter(t => { const v = getTurnVote(c.id, t.turn); return v && v.verdict; }).length;
+    const markHtml = markedN
+      ? `<span class="mk ${markedN === scoredN ? "done" : ""}">${markedN}/${scoredN}</span>` : "";
+    // 裁判判错轮数（人工标 fail 即代表"裁判这一轮判错了"）
+    const jvs = judgeVerdictStats(c);
+    const diffHtml = jvs.wrongN
+      ? `<span class="mk diff" title="你判定裁判判错的轮次：Turn ${jvs.wrongTurns.join("、")}">✗${jvs.wrongN}</span>`
+      : "";
+    el.innerHTML =
+      `<span class="cid">${esc(c.id)}</span>` +
+      `<span class="badge ${cls}">${esc(c.status)}</span>` +
+      markHtml +
+      diffHtml +
+      `<span class="r">${esc(c.rate || "")}</span>`;
+    el.onclick = () => selectCase(c.id);
+    box.appendChild(el);
+  });
+}
+
+/* ---- 工作区元数据与 diff 渲染 ---- */
+const WRITE_TOOLS = ["emitSkillFile", "upsert", "write", "create", "update", "delete", "emit"];
+function isWriteTool(a) {
+  const s = String(a || "").toLowerCase();
+  return WRITE_TOOLS.some(w => s.includes(w.toLowerCase()));
+}
+
+function renderMetaDiff(metaList) {
+  if (!metaList || !metaList.length) return "";
+  const changed = metaList.filter(m => m.changed);
+  let h = `<div style="margin-bottom:6px">` +
+          `<span style="font-size:11.5px;color:#57606a">元数据项：${metaList.length} 个` +
+          (changed.length ? ` <b style="color:#cf222e">（${changed.length} 项发生变更）</b>` : ` <span style="color:#1a7f37">（无变更）</span>`) +
+          `</span></div>`;
+  h += `<table class="meta-table"><thead><tr><th>字段</th><th style="width:41%">Before（变更前）</th><th style="width:41%">After（变更后）</th></tr></thead><tbody>`;
+  metaList.forEach(m => {
+    const chgClass = m.changed ? "class=\"chg\"" : "";
+    const tag = m.changed ? `<span class="chg-tag">已改动</span>` : "";
+    h += `<tr ${chgClass}>
+      <th>${esc(m.label)}${tag}</th>
+      <td class="v-before">${esc(m.before == null ? "（空/未设置）" : m.before)}</td>
+      <td class="${m.changed ? "v-after" : "v-before"}">${esc(m.after == null ? "（空/未设置）" : m.after)}</td>
+    </tr>`;
+  });
+  h += `</tbody></table>`;
+  return h;
+}
+
+function renderDiff(ws) {
+  if (!ws || !ws.has_workspace) {
+    return `<div class="wsbar">本轮无工作区快照（该 Case 为「无工作区」类型，工作区未参与）</div>`;
+  }
+
+  let h = "";
+
+  // 1. 元信息对比（skillName, displayName, description）
+  if (ws.meta_diff && ws.meta_diff.length) {
+    h += renderMetaDiff(ws.meta_diff);
+  }
+
+  // 2. SKILL 完整内容 前后对照
+  h += renderPairSection("SKILL 内容", ws.skill_pairs, "📄");
+
+  // 3. References 完整内容 前后对照
+  if (ws.ref_pairs && ws.ref_pairs.length) {
+    const changedRefs = ws.ref_pairs.filter(p => p.status !== "same");
+    h += `<div class="ref-banner">
+      <b>📁 References 模块（${ws.ref_pairs.length} 个文件）</b>
+      <span>${changedRefs.length
+        ? `有 <b style="color:#cf222e">${changedRefs.length}</b> 个参考文档被修改`
+        : "所有参考文档原样保持，未受影响"}</span>
+    </div>`;
+    h += renderPairSection("References 内容", ws.ref_pairs, "📁");
+  }
+
+  // 4. 变更片段 diff（放在最后，用于快速定位改动行）
+  h += renderFileDiff(ws);
+  return h;
+}
+
+/* 完整内容对照：单文件 Before / After 双栏 */
+function renderPre(content) {
+  const lines = String(content == null ? "" : content).split("\n");
+  let h = `<pre class="content-pre">`;
+  lines.forEach((ln, i) => {
+    h += `<span class="ln"><span class="no">${i + 1}</span>${esc(ln)}</span>`;
+  });
+  h += `</pre>`;
+  return h;
+}
+
+const ST_LABEL = { added: "新增", modified: "修改", deleted: "删除", same: "未改动" };
+
+function renderPairSection(title, pairs, icon) {
+  if (!pairs || !pairs.length) return "";
+  let h = `<div class="pair-sec">
+    <div class="pair-sec-h">${icon || ""} ${esc(title)}
+      <span class="cnt">（${pairs.length} 个文件）</span>
+    </div>`;
+  pairs.forEach(p => {
+    const pid = "pair_" + (++PAIR_SEQ);
+    SYNC_STATE[pid] = true;   // 默认同步联动
+    h += `<div class="pair-item">
+      <div class="pair-head">
+        <span class="st st-${p.status}">${ST_LABEL[p.status] || p.status}</span>
+        <span>${esc(p.path)}</span>
+        ${p.status === "same" ? "" :
+          `<button class="sync-btn on" data-pid="${pid}" onclick="toggleSync(this)" title="当前两栏联动滚动，点击可解绑为独立滚动">🔗 同步</button>`}
+        <span class="delta">
+          Before <b>${p.before_lines}</b> 行 / ${p.before_chars} 字
+          &nbsp;→&nbsp;
+          After <b>${p.after_lines}</b> 行 / ${p.after_chars} 字
+        </span>
+      </div>`;
+    if (p.status === "same") {
+      h += `<div class="pair">
+        <div class="pane same-note-pane" style="flex:1 1 100%">
+          <div class="pane-h b">BEFORE 与 AFTER 完全一致（${p.after_lines} 行未发生任何变化）</div>
+          ${renderPre(p.after)}
+        </div>
+      </div>`;
+    } else {
+      h += `<div class="pair" id="${pid}" data-sync="1">
+        <div class="pane">
+          <div class="pane-h b">BEFORE（变更前）</div>
+          ${p.before === null ? `<div class="absent">（此时该文件尚不存在）</div>` : renderPre(p.before)}
+        </div>
+        <div class="pane">
+          <div class="pane-h a">AFTER（变更后）</div>
+          ${p.after === null ? `<div class="absent">（该文件已被删除）</div>` : renderPre(p.after)}
+        </div>
+      </div>`;
+    }
+    h += `</div>`;
+  });
+  h += `</div>`;
+  return h;
+}
+
+/* 单文件「同步/独立」切换：默认独立，点击开启联动 */
+function toggleSync(btn) {
+  const pid = btn.dataset.pid;
+  const next = !SYNC_STATE[pid];
+  SYNC_STATE[pid] = next;
+  btn.textContent = next ? "🔗 同步" : "⇄ 独立";
+  btn.classList.toggle("on", next);
+  btn.title = next ? "两栏联动滚动中，点击可解绑为独立滚动" : "两栏各自独立滚动，点击可开启联动";
+  const el = document.getElementById(pid);
+  if (el && el.dataset) el.dataset.sync = next ? "1" : "0";
+}
+
+/* 变更片段 diff（原有能力） */
+function renderFileDiff(ws) {
+  const changed = ws.files.filter(f => f.status !== "same");
+  const same = ws.files.filter(f => f.status === "same");
+  let h = `<div class="wsbar" style="margin-top:4px">
+    <b>变更片段 diff</b>　变动文件 <b>${ws.changed_files}</b> 个　
+    <span class="add">+${ws.add}</span> / <span class="del">-${ws.del}</span> 行</div>`;
+
+  if (!changed.length && !ws.meta_changed) {
+    h += `<div class="wsbar" style="color:#1a7f37">✅ 本轮工作区物理与元数据均无任何改动</div>`;
+  }
+
+  // 正文零改动、仅元数据变更：显式点明，避免与上方「元数据项」表格脱节
+  if (!changed.length && ws.meta_changed && ws.meta_diff) {
+    const names = ws.meta_diff.filter(m => m.changed).map(m => m.label).join("、");
+    h += `<div class="wsbar" style="color:#9a6700;background:#fff8e6;border-color:#f0d8a8">
+      📌 本轮 <b>正文 0 行改动</b>，变更仅发生在元数据：<b>${esc(names)}</b>
+      （Before / After 详见上方「元数据项」表格）
+    </div>`;
+  }
+
+  changed.forEach(f => {
+    const isRef = f.path.toLowerCase().includes("reference");
+    const stTxt = f.status === "added" ? "新增" : f.status === "deleted" ? "删除" : "修改";
+    h += `<div class="fblock"><div class="fhead">` +
+         `<span class="st st-${f.status}">${stTxt}</span>` +
+         `${isRef ? "📁 [Reference] " : ""}${esc(f.path)}` +
+         `<span class="cnt">+${f.add} / -${f.del}</span></div>` +
+         `<pre class="diff">`;
+    f.rows.forEach(r => {
+      const [t, on, nn, txt] = r;
+      if (t === "~") { h += `<span class="ln gap"><span class="no"></span>${esc(txt)}</span>`; return; }
+      const cls = t === "+" ? "add" : (t === "-" ? "del" : "");
+      const no = (t === "+" ? nn : on);
+      h += `<span class="ln ${cls}"><span class="no">${no}</span>${esc(txt)}</span>`;
+    });
+    h += `</pre></div>`;
+  });
+  same.forEach(f => {
+    const isRef = f.path.toLowerCase().includes("reference");
+    h += `<div class="same-note">✅ ${isRef ? "📁 [Reference] " : ""}${esc(f.path)}　<span style="color:#8c959f">未改动（${f.line_total || 0} 行原样保持）</span></div>`;
+  });
+  return h;
+}
+
+/* ---- 单轮卡片 ---- */
+/* 维度名称中文映射表 */
+const GT_DIM_LABELS = {
+  gt_1_1_intent: "1.1 意图识别",
+  gt_2_1_clarification: "2.1 澄清追问",
+  gt_3_2_context_update: "3.2 上下文更新",
+  gt_4_1_structure: "4.1 结构合规",
+  gt_4_2_quality: "4.2 内容质量",
+  gt_5_1_targeted: "5.1 定向修改",
+  gt_5_2_preservation: "5.2 内容保护",
+  gt_6_1_boundary: "6.1 职责边界",
+  gt_6_2_safety: "6.2 安全风险"
+};
+
+function renderGt(gtObj) {
+  if (!gtObj || !Object.keys(gtObj).length) {
+    return `<div class="gt-empty">（本轮无专项评测预期）</div>`;
+  }
+  const items = Object.entries(gtObj).map(([k, val]) => {
+    const label = GT_DIM_LABELS[k] || k;
+    let pointsHtml = "";
+    if (typeof val === "object" && val !== null) {
+      const lis = Object.entries(val).map(([pk, pv]) => {
+        const pointLabel = pk.startsWith("point_") ? `要点 ${pk.replace("point_", "")}` : pk;
+        return `<li><b>${esc(pointLabel)}：</b>${esc(String(pv))}</li>`;
+      }).join("");
+      pointsHtml = `<ol class="gt-points">${lis}</ol>`;
+    } else {
+      pointsHtml = `<div class="gt-points">${esc(String(val))}</div>`;
+    }
+    return `<div class="gt-item">
+      <div class="gt-item-title">🎯 ${esc(label)} <span class="hint">(${esc(k)})</span></div>
+      ${pointsHtml}
+    </div>`;
+  }).join("");
+
+  return `<div class="gt-card">${items}</div>`;
+}
+
+function renderCards(cards, writeConfirm) {
+  const hasCards = Array.isArray(cards) && cards.length > 0;
+  const hasWc = writeConfirm && (writeConfirm.title || (writeConfirm.affected_paths || []).length);
+
+  if (!hasCards && !hasWc) {
+    return `<div class="cc-wrap"><div class="cc-empty">本轮未下发任何交互卡片（模型直接作答，未触发澄清或写入确认）</div></div>`;
+  }
+
+  let html = "";
+
+  if (hasCards) {
+    const items = cards.map((c, i) => {
+      const modeCls = c.mode === "multi" ? "multi" : "single";
+      const modeTxt = c.mode === "multi" ? "多选" : "单选";
+      const stepTxt = (c.step_index && c.step_total) ? `${c.step_index}/${c.step_total}` : `${i + 1}`;
+      const optHtml = (c.options || []).map(o => {
+        const rec = o.recommended
+          ? `<span class="cc-rec-flag">推荐</span>` : "";
+        const desc = o.desc ? `<span class="cc-opt-desc">${esc(o.desc)}</span>` : "";
+        return `<li class="cc-opt ${o.recommended ? "rec" : ""}">${rec}${esc(o.label)}${desc}</li>`;
+      }).join("");
+      const optCount = (c.options || []).length;
+      /* 选项数量仅作提示：偏离建议区间 2~4 时用灰色提示，不标红、不算违规 */
+      const offHint = (optCount < 2 || optCount > 4)
+        ? `<span class="cc-tag off" title="澄清规则手册建议每张卡 2~4 个选项；此处偏离仅为提示，不计入扣分">偏离建议区间</span>`
+        : "";
+      return `<div class="cc-card">
+        <div class="cc-head">
+          <span class="cc-idx">卡 ${esc(stepTxt)}</span>
+          <span class="cc-title">${esc(c.title)}</span>
+          <span class="cc-tag ${modeCls}">${modeTxt}</span>
+          <span class="cc-tag">${optCount} 个选项</span>
+          ${offHint}
+          ${c.allow_custom_input ? `<span class="cc-tag custom">可自定义输入</span>` : ""}
+          <span class="cc-tag">${esc(c.card_id || "")}</span>
+        </div>
+        <ul class="cc-opts">${optHtml || `<li class="cc-opt cc-empty">（无选项）</li>`}</ul>
+      </div>`;
+    }).join("");
+    html += `<div class="cc-wrap">
+      <div style="font-size:12px;font-weight:700;color:#0550ae;margin-bottom:7px">共 ${cards.length} 张澄清卡</div>
+      ${items}
+    </div>`;
+  }
+
+  if (hasWc) {
+    const paths = (writeConfirm.affected_paths || []).map(p => `<span class="wc-path">${esc(p)}</span>`).join("") || `<span class="hint">（未标注）</span>`;
+    const ch = writeConfirm.chosen;
+    let chosenHtml = "";
+    if (ch) {
+      const yes = ch.confirmed;
+      chosenHtml = `<div class="wc-chosen ${yes ? "yes" : "no"}">
+        <span class="wc-chosen-k">仿真实际选择</span>
+        <span class="wc-chosen-v">${esc(ch.label || (yes ? "覆盖写入" : "先不写入"))}</span>
+        <span class="wc-chosen-meta">第 ${esc(String(ch.round == null ? "-" : ch.round))} 轮作答 · 结果 ${esc(ch.status || "-")}</span>
+      </div>`;
+    } else {
+      chosenHtml = `<div class="wc-chosen none"><span class="wc-chosen-k">仿真实际选择</span><span class="wc-chosen-meta">（未找到作答记录，可能本轮未恢复）</span></div>`;
+    }
+    html += `<div class="wc-box">
+      <div class="wc-title">🔒 写入确认卡：${esc(writeConfirm.title || "")}</div>
+      <div style="font-size:12px;color:#57606a">
+        ${writeConfirm.confirm_label ? `<span class="cc-tag">${esc(writeConfirm.confirm_label)}</span>` : ""}
+        ${writeConfirm.decline_label ? `<span class="cc-tag">${esc(writeConfirm.decline_label)}</span>` : ""}
+        <span style="margin-left:6px">影响文件：</span>${paths}
+      </div>
+      ${chosenHtml}
+    </div>`;
+  }
+
+  return html;
+}
+
+/* ---- 裁判提示词与输入字段（折叠展示） ---- */
+function renderJudgeTrace(jt) {
+  if (!jt) return `<div class="empty">本轮未记录裁判输入（请先运行 07_backfill_judge_trace.py 回填）</div>`;
+
+  const meta = [
+    jt.judge_label ? `<span>裁判：<b>${esc(jt.judge_label)}</b></span>` : "",
+    jt.prompt_file ? `<span>提示词：<code>${esc(jt.prompt_file)}</code></span>` : "",
+    jt.force_keys && jt.force_keys.length
+      ? `<span>强制打分维度：<code>${esc(jt.force_keys.join(", "))}</code></span>` : "",
+    `<span>提示词长度：<code>${(jt.system_prompt || "").length}</code> 字</span>`,
+  ].filter(Boolean).join("");
+
+  const skipBlock = jt.skipped
+    ? `<div class="jt-skip">⚠ 本轮裁判<b>未调用模型</b>：${esc(jt.skip_reason || "按确定性规则直接判定")}</div>`
+    : "";
+
+  // 输入字段：标的每个字段的长度，鼓励人工核对是否缺关键证据
+  const inp = jt.input_data;
+  let kvRows = "";
+  if (inp && typeof inp === "object") {
+    kvRows = Object.keys(inp).map(k => {
+      const v = inp[k];
+      let kind = "—", size = "";
+      if (v === null || v === undefined) kind = "（空）";
+      else if (Array.isArray(v)) { kind = `数组 ${v.length} 项`; }
+      else if (typeof v === "object") { kind = `对象 ${Object.keys(v).length} 键`; size = `${JSON.stringify(v).length} 字`; }
+      else if (typeof v === "string") { kind = "字符串"; size = `${v.length} 字`; }
+      else { kind = String(v); }
+      return `<tr><td>${esc(k)}</td><td>${esc(kind)}${size ? ` · ${esc(size)}` : ""}</td></tr>`;
+    }).join("");
+  }
+
+  return `
+    <div class="jt-meta">${meta}</div>
+    ${skipBlock}
+
+    <details class="jt">
+      <summary>裁判提示词（system prompt，完整原文）</summary>
+      <div class="jt-body">
+        <pre class="jt-pre">${esc(jt.system_prompt || "（空）")}</pre>
+      </div>
+    </details>
+
+    <details class="jt">
+      <summary>送进裁判的字段一览（${inp && typeof inp === "object" ? Object.keys(inp).length : 0} 个字段）</summary>
+      <div class="jt-body">
+        ${kvRows ? `<table class="jt-kv">${kvRows}</table>` : `<div class="hint">无输入字段</div>`}
+      </div>
+    </details>
+
+    <details class="jt">
+      <summary>输入给裁判的完整数据（input_data，JSON 原文）</summary>
+      <div class="jt-body">
+        <pre class="jt-pre">${esc(JSON.stringify(inp, null, 2))}</pre>
+      </div>
+    </details>
+
+    ${jt.user_prompt ? `
+    <details class="jt">
+      <summary>最终发给模型的 user 消息（含输入 JSON 与判定要求）</summary>
+      <div class="jt-body">
+        <pre class="jt-pre">${esc(jt.user_prompt)}</pre>
+      </div>
+    </details>` : ""}
+
+    ${jt.interaction_flow ? `
+    <details class="jt">
+      <summary>交互闭环事实（判分前裁判被要求先看这个）</summary>
+      <div class="jt-body">
+        <pre class="jt-pre">${esc(JSON.stringify(jt.interaction_flow, null, 2))}</pre>
+      </div>
+    </details>` : ""}
+
+    ${jt.trace ? `
+    <details class="jt">
+      <summary>确定性物理预判（骨架雷达 / Diff 统计，裁判二的中间结论）</summary>
+      <div class="jt-body">
+        <pre class="jt-pre">${esc(JSON.stringify(jt.trace, null, 2))}</pre>
+      </div>
+    </details>` : ""}
+  `;
+}
+
+function renderTurn(t, caseId) {
+  const bad = t.failed;
+  const scored = t.scores.some(s => s.score === 0 || s.score === 1);
+  const vr = getTurnVote(caseId, t.turn);
+  const scores = t.scores.map(s => {
+    const cls = s.score === 1 ? "f1" : (s.score === 0 ? "f0" : "");
+    const badge = s.score === 1 ? `<span class="badge b-pass">PASS 1</span>`
+                : s.score === 0 ? `<span class="badge b-fail">FAIL 0</span>`
+                : `<span class="badge b-ns">N/A</span>`;
+    return `<div class="judge ${cls}" style="margin-bottom:8px">
+      <div class="jrow"><span class="jkey">${esc(s.key)}</span>${badge}</div>
+      <div class="jreason">${esc(s.reason)}</div>
+      ${s.evidence ? `<div class="jevidence">${esc(s.evidence)}</div>` : ""}
+    </div>`;
+  }).join("");
+
+  const tools = (t.actions || []).map(a =>
+    `<span class="tool ${isWriteTool(a) ? "w" : ""}">${esc(a)}</span>`).join("") || `<span class="hint">（无工具调用）</span>`;
+
+  const fa = (t.file_actions || []).map(f =>
+    `<span class="tool w" title="写入内容 ${f.size} 字符">${esc(f.op)} → ${esc(f.path)}</span>`).join("");
+
+  const longReply = (t.reply || "").length > 240;
+
+  // 本轮 AI 分数（多维度按顺序拼接，如 1/0）
+  const aiVals = t.scores.filter(s => s.score === 0 || s.score === 1).map(s => s.score);
+  const aiScoreTxt = aiVals.length ? aiVals.join("/") : null;
+  const aiCls = aiVals.length === 0 ? "" : (aiVals.every(v => v === 1) ? "ok" : "bad");
+
+  const voteUI = scored
+    ? `<span class="turn-vote">
+         <span class="ai-score ${aiCls}" title="本轮裁判模型给出的分数">AI 判 ${aiScoreTxt} 分</span>
+         <span class="hint">人工审核</span>
+         <button class="tv-btn ok ${vr && vr.verdict === "pass" ? "on" : ""}"
+                 title="裁判这一轮判得对，我认可这个分数"
+                 onclick="setTurnVote('${caseId}',${t.turn},'pass')">✓ 判得对</button>
+         <button class="tv-btn bad ${vr && vr.verdict === "fail" ? "on" : ""}"
+                 title="裁判这一轮判错了，我不认可这个分数"
+                 onclick="setTurnVote('${caseId}',${t.turn},'fail')">✗ 判错了</button>
+         <input class="tv-note" placeholder="判错原因（可空）" value="${esc(vr ? vr.note : "")}"
+                oninput="setTurnNote('${caseId}',${t.turn},this.value)">
+       </span>`
+    : `<span class="na-tag">本轮未考核（N/A），裁判无需判定</span>`;
+
+  const markCls = vr && vr.verdict === "pass" ? "marked-pass" : (vr && vr.verdict === "fail" ? "marked-fail" : "");
+
+  return `<div class="turn ${bad ? "bad" : ""} ${markCls}" data-bad="${bad ? 1 : 0}">
+    <div class="thead">
+      <span class="tn">Turn ${t.turn}</span>
+      ${bad ? `<span class="badge b-fail">本轮扣分</span>` : `<span class="badge b-pass">本轮达标</span>`}
+      ${t.workspace && t.workspace.has_workspace
+        ? `<span class="r">工作区 +${t.workspace.add}/-${t.workspace.del}</span>` : ""}
+      ${voteUI}
+    </div>
+    <div class="tbody">
+      <div class="sec">
+        <div class="sec-h">① 用户说了什么</div>
+        <div class="q">${esc(t.query) || `<span class="hint">（空）</span>`}</div>
+      </div>
+      <div class="sec">
+        <div class="sec-h">② Agent 回了什么 <span class="hint">（${(t.reply || "").length} 字）</span></div>
+        <div class="a ${longReply ? "clip" : ""}">${esc(t.reply) || `<span class="hint">（空）</span>`}</div>
+        ${longReply ? `<span class="more" onclick="toggleReply(this)">展开全文 ▾</span>` : ""}
+      </div>
+      <div class="sec">
+        <div class="sec-h">③ 调用了哪些工具</div>
+        <div>${tools}</div>
+        ${fa ? `<div style="margin-top:5px">${fa}</div>` : ""}
+      </div>
+      <div class="sec">
+        <div class="sec-h">④ 下发了哪些交互卡片 <span class="hint">（澄清卡 / 写入确认卡）</span></div>
+        ${renderCards(t.interactive_cards, t.write_confirm)}
+      </div>
+      <div class="sec">
+        <div class="sec-h">🎯 本轮评测预期（Ground Truth 要求）</div>
+        ${renderGt(t.gt)}
+      </div>
+      <div class="sec">
+        <div class="sec-h">⑤ 裁判怎么判的</div>
+        ${scores || `<div class="empty">无评分</div>`}
+      </div>
+      <div class="sec">
+        <div class="sec-h">
+          裁判依据：提示词与输入字段
+          <span class="hint">（裁判被要求怎么判 · 它实际收到了什么）</span>
+        </div>
+        ${renderJudgeTrace(t.judge_trace)}
+      </div>
+      <div class="sec">
+        <div class="sec-h">⑥ 工作区前后对比（元数据 → SKILL 全文 → References 全文 → 变更 diff）</div>
+        ${renderDiff(t.workspace)}
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleReply(el) {
+  const box = el.previousElementSibling;
+  const clipped = box.classList.toggle("clip");
+  el.textContent = clipped ? "展开全文 ▾" : "收起 ▴";
+}
+
+/* ---- 人工判定：按轮次标记 通过/不通过 + 备注（可导出后回填 case 文件） ---- */
+/* 批次隔离：每份 HTML 用自身数据指纹做 storage key，互不污染 */
+const BATCH_ID = document.getElementById("DATA").dataset.batch || "unknown";
+const VOTE_KEY = "goldenset_turn_pass_v1::" + BATCH_ID;
+// 结构：{ "boundary_0001": { "1": {"verdict":"pass","note":""}, "2": {...} } }
+let VOTES = {};
+/* 优先读本文件内嵌的标记（即“下载带标记的 HTML”后被转发过来的数据） */
+let EMBEDDED = {};
+try { EMBEDDED = JSON.parse(document.getElementById("VOTES").textContent || "{}"); } catch (e) { EMBEDDED = {}; }
+try {
+  const stored = JSON.parse(localStorage.getItem(VOTE_KEY) || "{}");
+  VOTES = {};
+  /* 内嵌标记打底，本机 localStorage 覆盖（本机新标记优先） */
+  [EMBEDDED, stored].forEach(src => {
+    Object.keys(src || {}).forEach(cid => {
+      if (!VOTES[cid]) VOTES[cid] = {};
+      Object.keys(src[cid] || {}).forEach(k => {
+        const v = src[cid][k];
+        if (v && v.verdict) VOTES[cid][k] = { verdict: v.verdict, note: v.note || "" };
+      });
+    });
+  });
+} catch (e) { VOTES = {}; }
+
+function getTurnVote(cid, turn) {
+  const c = VOTES[cid];
+  return c ? c[String(turn)] : null;
+}
+
+function setTurnVote(cid, turn, v) {
+  if (!VOTES[cid]) VOTES[cid] = {};
+  const key = String(turn);
+  const cur = VOTES[cid][key] || { verdict: "", note: "" };
+  cur.verdict = (cur.verdict === v) ? "" : v;     // 再点一次取消
+  if (!cur.verdict && !cur.note) delete VOTES[cid][key];
+  else VOTES[cid][key] = cur;
+  if (VOTES[cid] && Object.keys(VOTES[cid]).length === 0) delete VOTES[cid];
+  persistVotes();
+  renderTop();
+  renderList();
+  renderDetail(currentCase(), true);
+}
+
+function setTurnNote(cid, turn, text) {
+  if (!VOTES[cid] || !VOTES[cid][String(turn)]) return;   // 先判定再写备注
+  VOTES[cid][String(turn)].note = text;
+  persistVotes();
+}
+
+function persistVotes() {
+  try { localStorage.setItem(VOTE_KEY, JSON.stringify(VOTES)); } catch (e) {}
+}
+
+/* 启动时把 case 文件里已回填的 human_review 合入本地（localStorage 优先） */
+function hydrateVotesFromCases() {
+  CASES.forEach(c => {
+    c.turns.forEach(t => {
+      const ex = t.existing_review;
+      if (!ex || !ex.verdict) return;
+      const key = String(t.turn);
+      if (!VOTES[c.id]) VOTES[c.id] = {};
+      if (!VOTES[c.id][key] || !VOTES[c.id][key].verdict) {
+        VOTES[c.id][key] = { verdict: ex.verdict, note: ex.note || "" };
+      }
+    });
+  });
+}
+
+/* 统计：已标记的轮次数 */
+function voteStats() {
+  let cases = 0, turns = 0, pass = 0, fail = 0;
+  Object.keys(VOTES).forEach(cid => {
+    const t = VOTES[cid] || {};
+    const ks = Object.keys(t).filter(k => t[k] && t[k].verdict);
+    if (ks.length) cases++;
+    ks.forEach(k => {
+      turns++;
+      if (t[k].verdict === "pass") pass++; else if (t[k].verdict === "fail") fail++;
+    });
+  });
+  return { cases, turns, pass, fail };
+}
+
+/* 该 case 是否已全部标完（所有被考核轮次都判过） */
+function caseReviewed(c) {
+  const scored = c.turns.filter(t => t.scores.some(s => s.score === 0 || s.score === 1));
+  if (!scored.length) return false;
+  return scored.every(t => { const v = getTurnVote(c.id, t.turn); return v && v.verdict; });
+}
+
+/* 裁判判定质量统计
+   【语义约定】人工标注是对「裁判模型」的评价，不是对 Agent 的评价：
+     - verdict = "pass"  → 我认可裁判这一轮的分数，裁判判对了
+     - verdict = "fail"  → 我不认可裁判这一轮的分数，裁判判错了
+   因此「裁判判错轮数」= 人工标 fail 的轮次数，无需与 AI 分数做数值比对。 */
+function judgeVerdictStats(c) {
+  const scoredTurns = c.turns.filter(t => t.scores.some(s => s.score === 0 || s.score === 1));
+  const reviewed = [];
+  const rightTurns = [];
+  const wrongTurns = [];
+  scoredTurns.forEach(t => {
+    const v = getTurnVote(c.id, t.turn);
+    if (!v || !v.verdict) return;
+    reviewed.push(t.turn);
+    (v.verdict === "pass" ? rightTurns : wrongTurns).push(t.turn);
+  });
+  return {
+    scoredTotal: scoredTurns.length,
+    reviewed, rightTurns, wrongTurns,
+    reviewedN: reviewed.length,
+    rightN: rightTurns.length,
+    wrongN: wrongTurns.length,
+    done: scoredTurns.length > 0 && reviewed.length === scoredTurns.length,
+  };
+}
+
+/* 兼容旧调用点：agreed = 裁判判对的轮，disagreed = 裁判判错的轮 */
+function agreeWithAI(c) {
+  const s = judgeVerdictStats(c);
+  return { agreed: s.rightTurns, disagreed: s.wrongTurns };
+}
+
+/* ---- 详情 ---- */
+function currentCase() { return CASES.find(c => c.id === S.sel) || null; }
+
+function renderDetail(c, keepScroll) {
+  if (!c) { $("detail").innerHTML = `<div class="empty">← 从左侧选择一条用例开始核查</div>`; return; }
+  const prevScroll = keepScroll ? $("detail").scrollTop : 0;
+  PAIR_SEQ = 0;
+  Object.keys(SYNC_STATE).forEach(k => delete SYNC_STATE[k]);
+  const badTurns = c.turns.filter(t => t.failed).map(t => t.turn);
+  const why = Object.entries(c.dim_summary || {}).map(([k, v]) => {
+    const brief = v.flaw_brief || "";
+    return `${k}：${v.score_ratio}${brief && brief !== "全轮次达标通过" ? " — " + brief : ""}`;
+  }).join("　|　");
+
+  // 裁判复核进度与质量
+  const jvs = judgeVerdictStats(c);
+  const done = jvs.done;
+  const progressColor = done ? "#1a7f37" : (jvs.reviewedN ? "#9a6700" : "#8c959f");
+  const progressText = jvs.scoredTotal
+    ? `已复核 ${jvs.reviewedN}/${jvs.scoredTotal} 轮${done ? "（已完成）" : ""}`
+    : "本 case 无可考核轮次";
+
+  let h = `<div class="dhead">
+    <h2>${esc(c.id)}</h2>
+    <div class="meta">
+      <span>维度：<b>${esc(c.dim_desc)}</b></span>
+      <span>AI 结论：<b style="color:${c.status === "PASS" ? "#1a7f37" : "#cf222e"}">${esc(c.status)}</b></span>
+      <span>得分：<b>${esc(c.rate)}</b>（${c.check_passed}/${c.check_total}）</span>
+      <span>轮次：${c.turns.length}${badTurns.length ? `（扣分轮次 ${badTurns.join("、")}）` : ""}</span>
+    </div>
+    ${why ? `<div class="why">${esc(why)}</div>` : ""}
+    <div class="vote">
+      <span class="hint">裁判复核：</span>
+      <b style="color:${progressColor};font-size:12px">${progressText}</b>
+      ${jvs.rightN ? `<span class="hint">裁判判对 ${jvs.rightN} 轮</span>` : ""}
+      ${jvs.wrongN ? `<span class="hint" style="color:#cf222e">裁判判错 ${jvs.wrongN} 轮（Turn ${jvs.wrongTurns.join("、")}）</span>` : ""}
+    </div>
+  </div>`;
+
+  c.turns.forEach(t => { h += renderTurn(t, c.id); });
+  $("detail").innerHTML = h;
+  applyTurnFilter();
+  bindSyncScroll();
+  $("detail").scrollTop = prevScroll;
+}
+
+function applyTurnFilter() {
+  document.querySelectorAll("#detail .turn").forEach(el => {
+    const bad = el.dataset.bad === "1";
+    el.classList.toggle("hidden", S.onlyBadTurn && !bad);
+  });
+}
+
+/* 左右两栏滚动联动：默认「独立」，仅当该文件开关为「同步」时才联动 */
+function bindSyncScroll() {
+  document.querySelectorAll("#detail .pair").forEach(pair => {
+    const pres = pair.querySelectorAll("pre.content-pre");
+    if (pres.length !== 2) return;
+    if (pair._syncBound) return;
+    pair._syncBound = true;
+    let lock = false;
+    pres.forEach(src => {
+      src.addEventListener("scroll", () => {
+        // 默认独立：未显式开启同步则不做任何联动
+        if (!SYNC_STATE[pair.id]) return;
+        if (lock) return;
+        lock = true;
+        const maxSrc = src.scrollHeight - src.clientHeight;
+        const ratio = maxSrc > 0 ? src.scrollTop / maxSrc : 0;
+        pres.forEach(dst => {
+          if (dst === src) return;
+          const maxDst = dst.scrollHeight - dst.clientHeight;
+          dst.scrollTop = ratio * (maxDst > 0 ? maxDst : 0);
+        });
+        requestAnimationFrame(() => { lock = false; });
+      }, { passive: true });
+    });
+  });
+}
+
+function selectCase(cid) {
+  S.sel = cid;
+  document.querySelectorAll("#list .item").forEach(el => {
+    el.classList.toggle("on", el.dataset.cid === cid);
+  });
+  renderDetail(currentCase());
+}
+
+/* ---- 事件 ---- */
+$("q").addEventListener("input", e => { S.q = e.target.value; renderList(); });
+$("onlyFail").addEventListener("change", e => { S.onlyFail = e.target.checked; renderList(); });
+$("onlyBadTurn").addEventListener("change", e => {
+  S.onlyBadTurn = e.target.checked; applyTurnFilter();
+});
+/* 构造导出 payload（只含人工标记，供回填脚本使用） */
+function buildExportPayload() {
+  const cases = {};
+  let turnCnt = 0, passCnt = 0, failCnt = 0;
+
+  Object.keys(VOTES).forEach(cid => {
+    const tv = VOTES[cid] || {};
+    const turns = {};
+    Object.keys(tv)
+      .filter(k => tv[k] && tv[k].verdict)
+      .sort((a, b) => Number(a) - Number(b))
+      .forEach(k => {
+        turns[k] = { verdict: tv[k].verdict, note: tv[k].note || "" };
+        turnCnt++;
+        if (tv[k].verdict === "pass") passCnt++; else failCnt++;
+      });
+    if (Object.keys(turns).length) {
+      const c = CASES.find(x => x.id === cid);
+      cases[cid] = {
+        case_file: c ? c.case_file : "",
+        dim: c ? c.dim : "",
+        turns: turns
+      };
+    }
+  });
+
+  return {
+    schema_version: 1,
+    kind: "goldenset_turn_human_review",
+    exported_at: new Date().toISOString().replace("Z", "+08:00"),
+    summary: { cases: Object.keys(cases).length, turns: turnCnt, pass: passCnt, fail: failCnt },
+    cases: cases
+  };
+}
+
+/* 下载带标记的 HTML：把当前标记写入副本，转发即可让对方看到 */
+$("dlBtn").addEventListener("click", () => {
+  const marked = {};
+  Object.keys(VOTES).forEach(cid => {
+    const tv = VOTES[cid] || {};
+    const ks = Object.keys(tv).filter(k => tv[k] && tv[k].verdict);
+    if (!ks.length) return;
+    marked[cid] = {};
+    ks.forEach(k => { marked[cid][k] = { verdict: tv[k].verdict, note: tv[k].note || "" }; });
+  });
+
+  const n = Object.values(marked).reduce((a, o) => a + Object.keys(o).length, 0);
+  if (!n) {
+    alert("还没有任何人工标记。\n请先在每轮右侧点「✓ 通过」或「✗ 不通过」。");
+    return;
+  }
+
+  const safe = JSON.stringify(marked).replace(/</g, "\\u003c");
+  /* 用原始快照重建，确保不含渲染产物；替换占位符注入标记
+     注意：拼接串里的结束标签必须转义，否则浏览器会提前截断本脚本块 */
+  const END_TAG = "<" + "/script>";
+  const START_TAG = "<" + 'script id="VOTES" type="application/json">';
+  const OPEN = START_TAG, CLOSE = END_TAG;
+  const i0 = ORIG_HTML.indexOf(OPEN);
+  let html;
+  if (i0 < 0) {
+    html = ORIG_HTML;   // 兜底：理论上不会发生
+  } else {
+    const i1 = ORIG_HTML.indexOf(CLOSE, i0 + OPEN.length);
+    const end = (i1 < 0) ? i0 + OPEN.length : i1 + CLOSE.length;
+    html = ORIG_HTML.slice(0, i0) + OPEN + safe + CLOSE + ORIG_HTML.slice(end);
+  }
+
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "");
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `review_report_marked_${ts}.html`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+
+/* 清空标记：只清本批次，不影响其他人/其他批次 */
+$("resetBtn").addEventListener("click", () => {
+  const st = voteStats();
+  if (!st.turns) { alert("当前没有标记，无需清空。"); return; }
+  if (!confirm(`确认清空本批次的 ${st.turns} 条标记？此操作不可撤销。`)) return;
+  VOTES = {};
+  try { localStorage.removeItem(VOTE_KEY); } catch (e) {}
+  renderTop(); renderList(); renderDetail(currentCase(), true);
+});
+
+$("expBtn").addEventListener("click", () => {
+  const payload = buildExportPayload();
+  if (!payload.summary.turns) {
+    alert("还没有任何人工标记，无法导出。\n请先在每轮右侧点「✓ 通过」或「✗ 不通过」。");
+    return;
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "");
+  a.href = URL.createObjectURL(blob);
+  a.download = `human_review_${ts}.json`;
+  a.click();
+  console.log("导出完成", payload.summary);
+});
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key !== "j" && e.key !== "k") return;
+  const list = filtered();
+  if (!list.length) return;
+  const i = list.findIndex(c => c.id === S.sel);
+  let n = e.key === "j" ? i + 1 : i - 1;
+  if (i < 0) n = 0;
+  n = Math.max(0, Math.min(list.length - 1, n));
+  selectCase(list[n].id);
+  const el = document.querySelector(`#list .item[data-cid="${list[n].id}"]`);
+  if (el) el.scrollIntoView({ block: "nearest" });
+});
+
+/* ---- 启动 ---- */
+hydrateVotesFromCases();
+renderTop();
+renderList();
+const first = filtered()[0];
+if (first) selectCase(first.id);
+</script>
+</body>
+</html>
