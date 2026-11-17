@@ -79,7 +79,7 @@ export const seedCapabilities: RegisteredCapability[] = [
   {
     id: 'cap_llm_text',
     code: 'eval.llm.text_audit',
-    name: '通用文本裁判 (LLM Text Audit)',
+    name: '通用文本裁判',
     category: 'nlp_quality',
     version: 'v3.0.0',
     status: 'published',

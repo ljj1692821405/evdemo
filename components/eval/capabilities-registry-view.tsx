@@ -189,22 +189,14 @@ export function CapabilitiesRegistryView() {
                       <div className={cn('flex size-7 items-center justify-center rounded-md border', isSelected ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground')}>
                         <ExecIcon className="size-3.5" />
                       </div>
-                      <div>
-                        <div className="font-semibold text-xs text-foreground">
-                          {cap.name}
-                        </div>
-                        <Mono className="text-[10px] text-muted-foreground">{cap.code}</Mono>
+                      <div className="font-semibold text-xs text-foreground">
+                        {cap.name}
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <Tag tone={exec.tone} className="text-[10px]">{exec.label.split(' ')[0]}</Tag>
                       <Tag tone={cap.status === 'published' ? 'pass' : 'neutral'} className="text-[10px]">{cap.version}</Tag>
                     </div>
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-border/40 pt-2 text-[11px] text-muted-foreground">
-                    <span>{cap.inputSchema.length} 输入 · {cap.supportedDimensions.length} 维度</span>
-                    <Mono className="text-[10px] truncate max-w-28">{cap.entrypoint.target.split(':').pop()}</Mono>
                   </div>
                 </div>
               )
@@ -218,16 +210,11 @@ export function CapabilitiesRegistryView() {
             <div className="rounded-xl border bg-card p-5">
               {/* 头部元数据 */}
               <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-base font-bold text-foreground">{currentCap.name}</h1>
-                    <Tag tone={categoryMap[currentCap.category]?.tone}>{categoryMap[currentCap.category]?.label}</Tag>
-                    <Tag tone={executionTypeMap[currentCap.executionType]?.tone}>{executionTypeMap[currentCap.executionType]?.label}</Tag>
-                    <Tag tone={currentCap.status === 'published' ? 'pass' : 'neutral'}><Mono>{currentCap.version}</Mono></Tag>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <Mono className="text-foreground">{currentCap.code}</Mono>
-                  </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-base font-bold text-foreground">{currentCap.name}</h1>
+                  <Tag tone={categoryMap[currentCap.category]?.tone}>{categoryMap[currentCap.category]?.label}</Tag>
+                  <Tag tone={executionTypeMap[currentCap.executionType]?.tone}>{executionTypeMap[currentCap.executionType]?.label}</Tag>
+                  <Tag tone={currentCap.status === 'published' ? 'pass' : 'neutral'}><Mono>{currentCap.version}</Mono></Tag>
                 </div>
 
                 <div className="flex items-center gap-2">
