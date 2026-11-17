@@ -3,6 +3,7 @@ import { Lock, AlertTriangle, GitCompareArrows, Coins, Clock } from 'lucide-reac
 import { PageHeader, Panel, Tag, Ratio, Th, Td, Mono, VerdictBadge, Progress } from '@/components/eval/primitives'
 import { dimensions, experiments, runStats } from '@/lib/mock-data'
 import { runContext, viewableRuns } from '@/lib/runs'
+import { RunPicker } from '@/components/eval/run-picker'
 import { AgentDataGate } from '@/components/eval/agent-data-gate'
 import { judgeDimension, pct } from '@/lib/stats'
 import { snapshotForExp } from '@/lib/capability-data'
@@ -25,7 +26,7 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<{ run?
     return (
       <div>
         <PageHeader index={7} title="数据看板" />
-        <DashboardOverview />
+        <RunPicker basePath="/dashboard" />
       </div>
     )
   }
@@ -68,7 +69,7 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<{ run?
       <div className="flex flex-col gap-4 p-6">
         {/* Strip 1: conclusion */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <BigNumber label="总通过率（case 级）" value={pct(s.caseRate[0] / s.caseRate[1])} sub={`${s.caseRate[0]} / ${s.caseRate[1]} case`} />
+          <BigNumber label="该实验通过率（case 级）" value={pct(s.caseRate[0] / s.caseRate[1])} sub={`${s.caseRate[0]} / ${s.caseRate[1]} case`} />
           <BigNumber
             label="裁判-人工一致率"
             value={pct(s.agreement.n ? s.agreement.agree / s.agreement.n : null)}
@@ -207,77 +208,6 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<{ run?
           </Panel>
         </div>
       </div>
-    </div>
-  )
-}
-
-function DashboardOverview() {
-  const rows = viewableRuns.flatMap((run) => {
-    const s = runStats[run.id]
-    const exp = experiments.find((e) => e.id === run.experimentId)
-    return s && exp ? [{ run, exp, s }] : []
-  })
-  const casePass = rows.reduce((n, r) => n + r.s.caseRate[0], 0)
-  const caseTotal = rows.reduce((n, r) => n + r.s.caseRate[1], 0)
-  const checkPass = rows.reduce((n, r) => n + r.s.pass, 0)
-  const checkTotal = rows.reduce((n, r) => n + r.s.pass + r.s.fail, 0)
-  const dimRows = rows.flatMap(({ run, s }) => s.dims.map((d) => ({ run, d, fails: s.failTop.filter((f) => f.dim === d.key) })))
-
-  return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <BigNumber label="总通过率（case 级）" value={pct(caseTotal ? casePass / caseTotal : null)} sub={`${casePass} / ${caseTotal} case`} />
-        <BigNumber label="检查点通过率（轮次 × 维度）" value={pct(checkTotal ? checkPass / checkTotal : null)} sub={`${checkPass} / ${checkTotal}`} />
-        <BigNumber label="覆盖维度" value={String(dimRows.length)} sub={`${rows.length} 个 run`} />
-      </div>
-
-      <Panel title="维度" bodyClassName="overflow-x-auto p-0">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/40">
-            <tr>
-              <Th>维度</Th>
-              <Th>通过率 case</Th>
-              <Th>turn</Th>
-              <Th>na</Th>
-              <Th>结论</Th>
-              <Th className="w-16"><span className="sr-only">查看</span></Th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {dimRows.map(({ run, d, fails }) => {
-              const dim = dimensions.find((x) => x.key === d.key)
-              return (
-                <tr key={`${run.id}:${d.key}`} className="hover:bg-muted/30">
-                  <Td>
-                    <div className="flex items-center gap-2">
-                      <Mono className="text-muted-foreground">{d.key}</Mono>
-                      <span className="font-medium">{dim?.name ?? d.key}</span>
-                    </div>
-                  </Td>
-                  <Td>
-                    <div className="flex w-36 flex-col gap-1">
-                      <Ratio n={d.caseRate[0]} d={d.caseRate[1]} />
-                      <Progress value={d.caseRate[1] ? d.caseRate[0] / d.caseRate[1] : 0} tone={d.caseRate[0] === d.caseRate[1] ? 'pass' : 'fail'} />
-                    </div>
-                  </Td>
-                  <Td><Ratio n={d.turnRate[0]} d={d.turnRate[1]} /></Td>
-                  <Td><Mono className={d.na ? '' : 'text-muted-foreground'}>{d.na}</Mono></Td>
-                  <Td className="max-w-md">
-                    {fails.length ? (
-                      <span className="line-clamp-2 text-pretty text-fail">{fails[0].reason}</span>
-                    ) : (
-                      <Tag tone="pass">通过</Tag>
-                    )}
-                  </Td>
-                  <Td className="text-right">
-                    <Link href={`/dashboard?run=${run.id}`} className="whitespace-nowrap text-sm text-primary hover:underline">明细</Link>
-                  </Td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </Panel>
     </div>
   )
 }
