@@ -13,6 +13,7 @@ import {
   FlaskConical,
   Download,
   Cpu,
+  Trash2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dimensions as initialDims, scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
@@ -33,6 +34,8 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
   const [list, setList] = useScorers()
   const dict = useFieldDict()
   const [sel, setSel] = useState(list[0]?.id || initialScorers[0].id)
+  const [selectedDimKey, setSelectedDimKey] = useState(list[0]?.outputs[0] || initialScorers[0].outputs[0])
+  const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
   const [trial, setTrial] = useState<Record<string, Trial>>({})
   const [importModalOpen, setImportModalOpen] = useState(!!initialImportCapId)
 
@@ -71,6 +74,34 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
 
   const [lab, setLab] = useState(false)
 
+  const selectDimension = (dimKey: string) => {
+    const target = list.find((item) => item.outputs.includes(dimKey))
+    setSelectedDimKey(dimKey)
+    setConfirmDeleteKey(null)
+    if (target) setSel(target.id)
+  }
+
+  const deleteDimension = (dimKey: string) => {
+    const remainingDims = dims.filter((dim) => dim.key !== dimKey)
+    const remainingScorers = list.map((item) => ({
+      ...item,
+      outputs: item.outputs.filter((output) => output !== dimKey),
+    }))
+
+    setDims(remainingDims)
+    setList(remainingScorers)
+    setConfirmDeleteKey(null)
+
+    if (selectedDimKey === dimKey) {
+      const nextDim = remainingDims.find((dim) => remainingScorers.some((item) => item.outputs.includes(dim.key)))
+      if (nextDim) {
+        setSelectedDimKey(nextDim.key)
+        const nextScorer = remainingScorers.find((item) => item.outputs.includes(nextDim.key))
+        if (nextScorer) setSel(nextScorer.id)
+      }
+    }
+  }
+
   const handleImportComplete = (newScorer: Scorer, newDims: Dimension[]) => {
     setDims((prevDims) => {
       const existingKeys = new Set(prevDims.map((d) => d.key))
@@ -79,6 +110,7 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
     })
     setList((prevList) => [newScorer, ...prevList])
     setSel(newScorer.id)
+    setSelectedDimKey(newScorer.outputs[0])
   }
 
   if (lab && s) {
@@ -122,29 +154,6 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
         </div>
       </div>
 
-      {/* 评分器列表切换快捷 Pill */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap mr-1">评分器:</span>
-        {list.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setSel(item.id)}
-            className={cn(
-              'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap',
-              item.id === s?.id
-                ? 'border-primary bg-primary text-primary-foreground shadow-xs'
-                : 'border-border bg-card text-foreground hover:bg-muted',
-            )}
-          >
-            <span>{item.name}</span>
-            <Tag tone={item.id === s?.id ? 'neutral' : 'primary'} className="text-[10px] py-0 px-1 font-mono">
-              v{item.version}
-            </Tag>
-          </button>
-        ))}
-      </div>
-
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px_1fr]">
         <Panel
           title="维度注册表"
@@ -174,46 +183,98 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
           ) : null}
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40">
-              <tr><Th>key</Th><Th>名称</Th><Th>阈值</Th><Th className="text-right">启用</Th></tr>
+              <tr><Th>key</Th><Th>名称</Th><Th>阈值</Th><Th className="text-right">启用</Th><Th className="text-right">操作</Th></tr>
             </thead>
             <tbody className="divide-y">
-              {dims.map((d) => (
-                <tr key={d.key} className={cn(!d.enabled && 'text-muted-foreground', s?.outputs.includes(d.key) && 'bg-accent/50')}>
-                  <Td><Mono>{d.key}</Mono></Td>
-                  <Td>
-                    <button
-                      type="button"
-                      disabled={!list.some((x) => x.outputs.includes(d.key))}
-                      aria-pressed={s?.outputs.includes(d.key)}
-                      onClick={() => {
-                        const target = list.find((x) => x.outputs.includes(d.key))
-                        if (target) setSel(target.id)
-                      }}
-                      className="font-medium underline-offset-4 hover:underline disabled:no-underline disabled:opacity-50 text-left"
-                    >
-                      {d.name}
-                    </button>
-                  </Td>
-                  <Td>
-                    <div className="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
-                      <span>通过 ≥ <span className="font-mono">{d.thresholds.release}</span></span>
-                      <span>一致 ≥ <span className="font-mono">{d.thresholds.agreement}</span> · n ≥ <span className="font-mono">{d.thresholds.minSamples}</span></span>
-                    </div>
-                  </Td>
-                  <Td className="text-right">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={d.enabled}
-                      aria-label={`启用 ${d.name}`}
-                      onClick={() => setDims((ds) => ds.map((x) => (x.key === d.key ? { ...x, enabled: !x.enabled } : x)))}
-                      className={cn('relative inline-flex h-5 w-9 items-center rounded-full transition-colors', d.enabled ? 'bg-primary' : 'bg-input')}
-                    >
-                      <span className={cn('inline-block size-4 rounded-full bg-white shadow transition-transform', d.enabled ? 'translate-x-4' : 'translate-x-0.5')} />
-                    </button>
-                  </Td>
-                </tr>
-              ))}
+              {dims.map((d) => {
+                const hasScorer = list.some((item) => item.outputs.includes(d.key))
+                const selected = selectedDimKey === d.key
+                const confirmingDelete = confirmDeleteKey === d.key
+
+                return (
+                  <tr
+                    key={d.key}
+                    role={hasScorer ? 'button' : undefined}
+                    tabIndex={hasScorer ? 0 : -1}
+                    aria-selected={selected}
+                    onClick={() => hasScorer && selectDimension(d.key)}
+                    onKeyDown={(event) => {
+                      if (hasScorer && (event.key === 'Enter' || event.key === ' ')) {
+                        event.preventDefault()
+                        selectDimension(d.key)
+                      }
+                    }}
+                    className={cn(
+                      'transition-colors',
+                      hasScorer && 'cursor-pointer hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-ring',
+                      !d.enabled && 'text-muted-foreground',
+                      selected && 'bg-accent/60',
+                    )}
+                  >
+                    <Td><Mono>{d.key}</Mono></Td>
+                    <Td><span className={cn('font-medium', !hasScorer && 'opacity-50')}>{d.name}</span></Td>
+                    <Td>
+                      <div className="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
+                        <span>通过 ≥ <span className="font-mono">{d.thresholds.release}</span></span>
+                        <span>一致 ≥ <span className="font-mono">{d.thresholds.agreement}</span> · n ≥ <span className="font-mono">{d.thresholds.minSamples}</span></span>
+                      </div>
+                    </Td>
+                    <Td className="text-right">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={d.enabled}
+                        aria-label={`启用 ${d.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setDims((items) => items.map((item) => (item.key === d.key ? { ...item, enabled: !item.enabled } : item)))
+                        }}
+                        className={cn('relative inline-flex h-5 w-9 items-center rounded-full transition-colors', d.enabled ? 'bg-primary' : 'bg-input')}
+                      >
+                        <span className={cn('inline-block size-4 rounded-full bg-card shadow transition-transform', d.enabled ? 'translate-x-4' : 'translate-x-0.5')} />
+                      </button>
+                    </Td>
+                    <Td className="text-right">
+                      {confirmingDelete ? (
+                        <div className="flex justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setConfirmDeleteKey(null)
+                            }}
+                            className="h-7 rounded-md border border-input bg-card px-2 text-[11px] font-medium hover:bg-muted"
+                          >
+                            取消
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              deleteDimension(d.key)
+                            }}
+                            className="h-7 rounded-md border border-fail bg-fail px-2 text-[11px] font-medium text-primary-foreground hover:bg-fail/90"
+                          >
+                            确认删除
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          aria-label={`删除 ${d.name}`}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setConfirmDeleteKey(d.key)
+                          }}
+                          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-fail-soft hover:text-fail"
+                        >
+                          <Trash2 className="size-3.5" aria-hidden="true" />
+                        </button>
+                      )}
+                    </Td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </Panel>
