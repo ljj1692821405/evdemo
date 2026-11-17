@@ -110,9 +110,43 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
       {/* card */}
       <article className="min-w-0 rounded-lg border bg-card" aria-label={`${turn.caseId} 第 ${turn.turnNo} 轮`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Mono className="text-base font-semibold">{turn.caseId}</Mono>
-            <Tag>turn {turn.turnNo}/{turn.totalTurns}</Tag>
+            {turn.totalTurns > 1 ? (
+              <div role="tablist" aria-label="轮次快捷切换" className="flex items-center gap-1 rounded-md border bg-muted/40 p-0.5">
+                {Array.from({ length: turn.totalTurns }, (_, i) => i + 1).map((tNo) => {
+                  const active = tNo === turn.turnNo
+                  const targetIdx = reviewTurns.findIndex((t) => t.caseId === turn.caseId && t.turnNo === tNo)
+                  return (
+                    <button
+                      key={tNo}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      disabled={targetIdx === -1}
+                      onClick={() => {
+                        if (targetIdx !== -1) {
+                          setIdx(targetIdx)
+                          setFocusDim(0)
+                          setExpanded(false)
+                        }
+                      }}
+                      className={cn(
+                        'flex h-6 min-w-12 items-center justify-center rounded px-2 font-mono text-xs font-medium transition-colors',
+                        active
+                          ? 'bg-primary text-primary-foreground shadow-xs'
+                          : 'text-muted-foreground hover:bg-card hover:text-foreground',
+                        targetIdx === -1 && 'cursor-not-allowed opacity-40',
+                      )}
+                    >
+                      turn {tNo}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <Tag>turn 1/1</Tag>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <button
