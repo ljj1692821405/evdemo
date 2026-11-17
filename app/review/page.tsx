@@ -32,7 +32,7 @@ async function ReviewContent({ searchParams }: { searchParams: Promise<{ run?: s
       <PageHeader
         index={8}
         title="核对看板"
-        back={`/dashboard?run=${run.id}`}
+        back="/review"
         meta={
           <span className="flex items-center gap-2">
             <Mono>{run.id}</Mono>
