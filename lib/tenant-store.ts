@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useShared } from './field-dict-store'
+import { DEMO_AGENT_ID } from './mock-data'
+import { useShared } from './shared-store'
 
 export type ModelRole = 'target' | 'judge' | 'sim_user'
 export type Protocol = 'HTTP' | 'SSE' | 'gRPC'
@@ -16,6 +17,8 @@ export type Agent = {
   endpoint: string
   protocol: Protocol
   owner: string
+  background?: string
+  backgroundVersion?: number
   models: ModelBinding[]
   tasks: EvalTask[]
 }
@@ -24,21 +27,27 @@ export type ProductLine = { id: string; name: string; code: string; owner: strin
 export const roleLabel: Record<ModelRole, string> = { target: '被测模型', judge: '裁判模型', sim_user: '仿真用户' }
 export const scheduleLabel: Record<TaskSchedule, string> = { manual: '手动触发', daily: '每日定时', pre_release: '发布前门禁' }
 
+const skillAgentBackground = `Skill-Agent 负责创建和编辑 Skill 文件，写入前需经用户确认。
+1. 模糊意图：Agent 调 askClarification 弹出澄清卡 → 挂起等待 → 用户作答 → 自动调 emitSkillFile 写入
+2. 明确意图：Agent 不弹澄清卡 → 直接弹写入确认卡 → 用户确认 → 写入`
+
 const seedLines: ProductLine[] = [
   {
-    id: 'pl_doc',
-    name: '文档协作',
-    code: 'doc',
+    id: 'pl_heyreel',
+    name: 'Heyreel',
+    code: 'heyreel',
     owner: '张晨',
-    desc: '在线文档编辑与问答类 Agent',
+    desc: 'Skill 编辑类 Agent',
     agents: [
       {
-        id: 'ag_doc_editor',
-        name: '文档编辑助手',
-        code: 'doc-editor',
-        endpoint: 'https://agent.internal/doc-editor/v1/chat',
+        id: DEMO_AGENT_ID,
+        name: 'Skill-Agent',
+        code: 'skill-agent',
+        endpoint: 'https://agent.internal/skill-agent/v1/chat',
         protocol: 'SSE',
         owner: '张晨',
+        background: skillAgentBackground,
+        backgroundVersion: 1,
         models: [
           { id: 'm1', role: 'target', model: 'openai/gpt-5' },
           { id: 'm2', role: 'judge', model: 'openai/gpt-5-mini' },
@@ -49,6 +58,15 @@ const seedLines: ProductLine[] = [
           { id: 't2', name: '澄清行为巡检', dimensions: ['6.1'], schedule: 'daily', active: true },
         ],
       },
+    ],
+  },
+  {
+    id: 'pl_doc',
+    name: '文档协作',
+    code: 'doc',
+    owner: '张晨',
+    desc: '在线文档编辑与问答类 Agent',
+    agents: [
       {
         id: 'ag_doc_qa',
         name: '文档问答',
@@ -60,7 +78,7 @@ const seedLines: ProductLine[] = [
           { id: 'm4', role: 'target', model: 'openai/gpt-5-mini' },
           { id: 'm5', role: 'judge', model: 'openai/gpt-5' },
         ],
-        tasks: [{ id: 't3', name: '回复完整性', dimensions: ['5.4'], schedule: 'manual', active: true }],
+        tasks: [],
       },
     ],
   },
@@ -79,7 +97,7 @@ const seedLines: ProductLine[] = [
         protocol: 'gRPC',
         owner: '王一',
         models: [{ id: 'm6', role: 'target', model: 'google/gemini-2.5-flash' }],
-        tasks: [{ id: 't4', name: '安全拒答', dimensions: ['6.2'], schedule: 'daily', active: false }],
+        tasks: [],
       },
     ],
   },
@@ -112,6 +130,8 @@ export function useLines() {
     },
     removeAgent: (lineId: string, agentId: string) =>
       setLines((ls) => ls.map((l) => (l.id === lineId ? { ...l, agents: l.agents.filter((a) => a.id !== agentId) } : l))),
+    setBackground: (lineId: string, agentId: string, background: string) =>
+      updateAgent(lineId, agentId, (a) => ({ ...a, background, backgroundVersion: (a.backgroundVersion ?? 0) + 1 })),
     addModel: (lineId: string, agentId: string, m: Omit<ModelBinding, 'id'>) =>
       updateAgent(lineId, agentId, (a) => ({ ...a, models: [...a.models, { ...m, id: uid('m') }] })),
     removeModel: (lineId: string, agentId: string, id: string) =>
@@ -126,7 +146,7 @@ export function useLines() {
 }
 
 type Scope = { lineId: string; agentId: string }
-const seedScope: Scope = { lineId: 'pl_doc', agentId: 'ag_doc_editor' }
+const seedScope: Scope = { lineId: 'pl_heyreel', agentId: DEMO_AGENT_ID }
 
 export function useScope() {
   const { lines } = useLines()
@@ -143,4 +163,14 @@ export function useScope() {
     setAgent: (agentId: string) => setScope({ lineId: line?.id ?? '', agentId }),
     setScope,
   }
+}
+
+const seedCache = new Map<string, unknown>()
+
+export function useAgentShared<T>(key: string, seed: (isDemo: boolean) => T, agentIdOverride?: string) {
+  const { agent } = useScope()
+  const agentId = agentIdOverride ?? agent?.id ?? 'none'
+  const cacheKey = `${key}:${agentId}`
+  if (!seedCache.has(cacheKey)) seedCache.set(cacheKey, seed(agentId === DEMO_AGENT_ID))
+  return useShared<T>(cacheKey, seedCache.get(cacheKey) as T)
 }

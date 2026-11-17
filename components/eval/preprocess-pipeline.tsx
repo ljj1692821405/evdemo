@@ -16,7 +16,8 @@ import {
   Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { resolveEntry, useFieldDict, useShared } from '@/lib/field-dict-store'
+import { resolveEntry, useFieldDict } from '@/lib/field-dict-store'
+import { useAgentShared } from '@/lib/tenant-store'
 import { Panel, Tag, Mono } from './primitives'
 
 type FieldNode = { name: string; tokens: number; sample: string }
@@ -115,11 +116,36 @@ const cacheByScript: Record<string, CacheEntry[]> = {
 type RunState = 'idle' | 'running' | 'done'
 type Selection = { kind: 'script' } | { kind: 'store' } | { kind: 'field'; name: string }
 
+const seedScripts = (isDemo: boolean): Script[] => (isDemo ? initialScripts : [])
+
 export function usePreprocessScripts() {
-  return useShared<Script[]>('preprocess-scripts', initialScripts)
+  return useAgentShared<Script[]>('preprocess-scripts', seedScripts)
 }
 
 export function PreprocessPipeline() {
+  const [scripts, setScripts] = usePreprocessScripts()
+  if (scripts.length > 0) return <ScriptPipeline />
+  return (
+    <Panel title="预处理脚本">
+      <div className="flex flex-col items-center gap-3 py-6 text-sm text-muted-foreground">
+        暂无脚本
+        <button
+          type="button"
+          onClick={() =>
+            setScripts([
+              { id: 'script_1', name: 'script_1', versions: [{ v: 'v1', status: 'draft' }], inputs: [], outputs: [], code: 'def extract() -> dict:\n    return {}', consumers: [] },
+            ])
+          }
+          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90"
+        >
+          <Plus className="size-3.5" aria-hidden="true" />新建脚本
+        </button>
+      </div>
+    </Panel>
+  )
+}
+
+function ScriptPipeline() {
   const dict = useFieldDict()
   const sourceFields: FieldNode[] = dict.entries
     .filter((e) => e.source !== 'derived')

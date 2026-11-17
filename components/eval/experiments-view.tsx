@@ -64,7 +64,7 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
     setExps((e) => [{ id, name: draft.name || '未命名实验', snapshotId: draft.snapshotId, scorerIds: draft.scorerIds, weights, createdBy: '我', createdAt: '刚刚', fieldDictVersion }, ...e])
     const cfg = agent ? caps.currentOf(agent.id) : undefined
     if (agent && cfg) {
-      const snap = Object.freeze({ expId: id, agentId: agent.id, agentCode: agent.code, configVersion: cfg.version, frozenAt: '刚刚', items: toFrozen(resolveConfig(cfg, caps.assets)) })
+      const snap = Object.freeze({ expId: id, agentId: agent.id, agentCode: agent.code, configVersion: cfg.version, backgroundVersion: `v${agent.backgroundVersion ?? 0}`, frozenAt: '刚刚', items: toFrozen(resolveConfig(cfg, caps.assets)) })
       setCreatedSnaps((m) => ({ ...m, [id]: snap }))
     }
     setSel(id)

@@ -1,10 +1,13 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { AlertOctagon, Check, CornerDownRight, Gavel, Code2, Plus, Trash2, X } from 'lucide-react'
+import Link from 'next/link'
+import { AlertOctagon, Check, CornerDownRight, Gavel, Code2, Pencil, Plus, Trash2, Wrench, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { sampleSimTraj, type FieldEntry } from '@/lib/mock-data'
+import { sampleSimTraj, type FieldContext, type FieldEntry } from '@/lib/mock-data'
 import { isDerivedPath, isRawPath, isValidFieldName, resolvePath, useFieldDict, useScorers } from '@/lib/field-dict-store'
+import { useScope } from '@/lib/tenant-store'
+import { useAgentTools } from '@/lib/capability-store'
 import { Panel, Tag, Mono, Th, Td } from './primitives'
 import { usePreprocessScripts } from './preprocess-pipeline'
 
@@ -19,7 +22,16 @@ export function FieldDictView() {
   const dict = useFieldDict()
   const [scorers] = useScorers()
   const [scripts] = usePreprocessScripts()
+  const { agent } = useScope()
+  const { tools, configVersion } = useAgentTools(agent?.id)
   const [selected, setSelected] = useState('agent_reply')
+
+  const setContextKind = (f: FieldEntry, kind: string) => {
+    const context: FieldContext | undefined =
+      kind === 'tools' ? { kind: 'tools' } : kind === 'enum' ? { kind: 'enum', values: f.context?.kind === 'enum' ? f.context.values : [] } : undefined
+    dict.update(f.logicalName, { context })
+    setSelected(f.logicalName)
+  }
   const [adding, setAdding] = useState(false)
   const [confirming, setConfirming] = useState<string | null>(null)
   const entry = dict.find(selected) ?? dict.entries[0]
@@ -76,7 +88,7 @@ export function FieldDictView() {
         ) : null}
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40">
-            <tr><Th>逻辑名</Th><Th>物理路径（按序取第一非空）</Th><Th>引用</Th><Th className="text-right">体积估算</Th><Th className="w-10"><span className="sr-only">操作</span></Th></tr>
+            <tr><Th>逻辑名</Th><Th>物理路径（按序取第一非空）</Th><Th>附带上下文</Th><Th>引用</Th><Th className="text-right">体积估算</Th><Th className="w-10"><span className="sr-only">操作</span></Th></tr>
           </thead>
           <tbody className="divide-y">
             {dict.entries.map((f) => {
@@ -106,6 +118,22 @@ export function FieldDictView() {
                         </li>
                       ))}
                     </ol>
+                  </Td>
+                  <Td onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        aria-label={`${f.logicalName} 附带上下文`}
+                        value={f.context?.kind ?? 'none'}
+                        onChange={(e) => setContextKind(f, e.target.value)}
+                        className="h-7 rounded-md border bg-card px-1.5 text-xs"
+                      >
+                        <option value="none">无</option>
+                        <option value="tools">工具清单</option>
+                        <option value="enum">取值说明</option>
+                      </select>
+                      {f.context?.kind === 'tools' ? <Tag tone="primary" className="font-mono">{tools.length}</Tag> : null}
+                      {f.context?.kind === 'enum' ? <Tag tone="primary" className="font-mono">{f.context.values.length}</Tag> : null}
+                    </div>
                   </Td>
                   <Td>
                     {refs.length ? (
@@ -163,6 +191,55 @@ export function FieldDictView() {
 
       <div className="flex flex-col gap-4">
         {entry ? (
+          <Panel title={<span className="flex items-center gap-2">裁判上下文 <Mono>{entry.logicalName}</Mono></span>}>
+            <div className="flex flex-col gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">说明</span>
+                <input
+                  key={`${entry.logicalName}:${entry.description}`}
+                  defaultValue={entry.description}
+                  onBlur={(e) => {
+                    const next = e.target.value.trim()
+                    if (next && next !== entry.description) dict.update(entry.logicalName, { description: next })
+                  }}
+                  className="h-8 rounded-md border bg-card px-2 text-xs"
+                />
+              </label>
+              {entry.context?.kind === 'tools' ? (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Wrench className="size-3.5" aria-hidden="true" />
+                    工具清单
+                    {agent && configVersion ? <Tag className="font-mono">{agent.code}@{configVersion}</Tag> : null}
+                    <Link href="/lines" aria-label="管理工具" className="ml-auto flex size-6 items-center justify-center rounded hover:bg-muted hover:text-foreground">
+                      <Pencil className="size-3" aria-hidden="true" />
+                    </Link>
+                  </div>
+                  {tools.length ? (
+                    <ul className="flex flex-col gap-1">
+                      {tools.map((t) => (
+                        <li key={t.name} className="rounded-md border px-2.5 py-1.5">
+                          <Mono className="font-semibold">{t.name}</Mono>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{t.purpose}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground">暂无工具</p>
+                  )}
+                </div>
+              ) : null}
+              {entry.context?.kind === 'enum' ? (
+                <EnumEditor
+                  key={entry.logicalName}
+                  values={entry.context.values}
+                  onSave={(values) => dict.update(entry.logicalName, { context: { kind: 'enum', values } })}
+                />
+              ) : null}
+            </div>
+          </Panel>
+        ) : null}
+        {entry ? (
           <Panel title={<span className="flex items-center gap-2">解析 <Mono>{entry.logicalName}</Mono></span>} actions={<Tag>样例 sim_traj</Tag>}>
             <ol className="flex flex-col gap-2">
               {trace.steps.map((s, i) => {
@@ -203,6 +280,64 @@ export function FieldDictView() {
         </Panel>
       </div>
     </div>
+  )
+}
+
+type EnumValue = { value: string; meaning: string }
+
+function EnumEditor({ values, onSave }: { values: EnumValue[]; onSave: (values: EnumValue[]) => void }) {
+  const [rows, setRows] = useState<EnumValue[]>(values)
+  const clean = rows.map((r) => ({ value: r.value.trim(), meaning: r.meaning.trim() })).filter((r) => r.value)
+  const dirty = JSON.stringify(clean) !== JSON.stringify(values)
+  const patch = (i: number, p: Partial<EnumValue>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...p } : r)))
+
+  return (
+    <fieldset className="flex flex-col gap-1.5">
+      <legend className="mb-1.5 text-xs text-muted-foreground">取值说明</legend>
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <input
+            value={r.value}
+            onChange={(e) => patch(i, { value: e.target.value })}
+            aria-label={`取值 ${i + 1}`}
+            placeholder="completed"
+            className="h-8 w-28 shrink-0 rounded-md border bg-card px-2 font-mono text-xs"
+          />
+          <input
+            value={r.meaning}
+            onChange={(e) => patch(i, { meaning: e.target.value })}
+            aria-label={`含义 ${i + 1}`}
+            placeholder="正常结束"
+            className="h-8 min-w-0 flex-1 rounded-md border bg-card px-2 text-xs"
+          />
+          <button
+            type="button"
+            onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}
+            aria-label={`移除取值 ${i + 1}`}
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+          >
+            <X className="size-3.5" aria-hidden="true" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setRows((rs) => [...rs, { value: '', meaning: '' }])}
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-dashed px-2 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+        >
+          <Plus className="size-3" aria-hidden="true" />取值
+        </button>
+        <button
+          type="button"
+          disabled={!dirty}
+          onClick={() => { onSave(clean); setRows(clean) }}
+          className="inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          <Check className="size-3" aria-hidden="true" />保存
+        </button>
+      </div>
+    </fieldset>
   )
 }
 

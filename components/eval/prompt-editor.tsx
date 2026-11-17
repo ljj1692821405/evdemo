@@ -1,9 +1,10 @@
 'use client'
 
 import { useImperativeHandle, useRef, type Ref } from 'react'
-import { AlertTriangle, Braces, Plus, UserRound } from 'lucide-react'
+import Link from 'next/link'
+import { AlertTriangle, Braces, Pencil, Plus, UserRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Mono } from './primitives'
+import { Mono, Tag } from './primitives'
 
 export const judgeModels = ['openai/gpt-5-mini', 'openai/gpt-5', 'anthropic/claude-sonnet-4.5', 'google/gemini-2.5-flash']
 
@@ -22,6 +23,8 @@ export function defaultPrompt(fields: string[]) {
 type Props = {
   template: string
   background: string
+  agentBackground: string
+  agentBackgroundVersion: number
   model: string
   promptVersion: string
   inputFields: string[]
@@ -32,7 +35,7 @@ type Props = {
   insertRef?: Ref<{ insert: (field: string) => void }>
 }
 
-export function PromptEditor({ template, background, model, promptVersion, inputFields, allFields, locked, onChange, onAddField, insertRef }: Props) {
+export function PromptEditor({ template, background, agentBackground, agentBackgroundVersion, model, promptVersion, inputFields, allFields, locked, onChange, onAddField, insertRef }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const refs = referencedVars(template)
   const undefinedVars = refs.filter((v) => !inputFields.includes(v))
@@ -77,14 +80,27 @@ export function PromptEditor({ template, background, model, promptVersion, input
         </label>
       </div>
 
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <UserRound className="size-3" aria-hidden="true" />
+          业务背景
+          <Tag className="font-mono">v{agentBackgroundVersion}</Tag>
+          <Link href="/lines" aria-label="编辑业务背景" className="ml-auto flex size-6 items-center justify-center rounded hover:bg-card hover:text-foreground">
+            <Pencil className="size-3" aria-hidden="true" />
+          </Link>
+        </div>
+        <p className="line-clamp-4 whitespace-pre-wrap rounded-md border border-dashed bg-muted/40 p-2.5 text-xs leading-relaxed text-muted-foreground">
+          {agentBackground.trim() || '未填写'}
+        </p>
+      </div>
+
       <label className="flex flex-col gap-1">
-        <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><UserRound className="size-3" aria-hidden="true" />背景</span>
+        <span className="text-[11px] text-muted-foreground">追加背景</span>
         <textarea
           value={background}
           readOnly={locked}
           onChange={(e) => onChange({ background: e.target.value })}
-          rows={3}
-          placeholder="你是……"
+          rows={2}
           className={cn('w-full resize-y rounded-md border bg-card p-2.5 text-xs leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-primary/30', locked && 'cursor-not-allowed text-muted-foreground')}
         />
       </label>

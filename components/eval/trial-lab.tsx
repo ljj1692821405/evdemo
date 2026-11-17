@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { dimensions, snapshots, type Scorer } from '@/lib/mock-data'
 import { resolveEntry, useFieldDict } from '@/lib/field-dict-store'
 import { fieldValues, runTrial, trialUnits, type TrialResult } from '@/lib/trial-data'
+import { judgeSections, type JudgeTool } from '@/lib/judge-prompt'
 import { Mono, Tag, VerdictBadge, Btn } from './primitives'
 import { judgeModels, referencedVars } from './prompt-editor'
 
@@ -15,13 +16,15 @@ type Props = {
   scorer: Scorer
   template: string
   background: string
+  agentBackground: string
+  tools: JudgeTool[]
   onClose: () => void
   onChange: (patch: Partial<Scorer>) => void
   onPublish: () => void
   onPassed: () => void
 }
 
-export function TrialLab({ scorer, template, background, onClose, onChange, onPublish, onPassed }: Props) {
+export function TrialLab({ scorer, template, background, agentBackground, tools, onClose, onChange, onPublish, onPassed }: Props) {
   const [snapId, setSnapId] = useState(snapshots[0].id)
   const units = useMemo(() => trialUnits(snapId), [snapId])
   const [sel, setSel] = useState(units[0]?.key)
@@ -42,6 +45,13 @@ export function TrialLab({ scorer, template, background, onClose, onChange, onPu
   }
   const usesPrompt = scorer.implType !== 'script'
   const refs = usesPrompt ? referencedVars(template) : []
+  const sections = judgeSections({
+    agentBackground,
+    extraBackground: background,
+    template,
+    fields: refs.filter((r) => scorer.inputFields.includes(r)).flatMap((r) => dict.find(r) ?? []),
+    tools,
+  })
   const model = scorer.judgeModel ?? judgeModels[0]
   const locked = scorer.status === 'published'
   const filtered = units.filter((u) => !q || u.key.includes(q) || u.query.includes(q))
@@ -171,7 +181,7 @@ export function TrialLab({ scorer, template, background, onClose, onChange, onPu
                 disabled={k === 'prompt' && !usesPrompt}
                 className={cn('rounded-md px-2.5 py-1 text-xs font-medium disabled:hidden', tab === k ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground')}
               >
-                {k === 'prompt' ? '渲染提示词' : `输入字段 · ${scorer.inputFields.length}`}
+                {k === 'prompt' ? '最终提示词' : `输入字段 · ${scorer.inputFields.length}`}
               </button>
             ))}
             {tab === 'prompt' && usesPrompt && !locked ? (
@@ -186,7 +196,7 @@ export function TrialLab({ scorer, template, background, onClose, onChange, onPu
               editing ? (
                 <div className="flex h-full flex-col gap-3">
                   <label className="flex flex-col gap-1.5">
-                    <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground"><UserRound className="size-3.5" aria-hidden="true" />背景</span>
+                    <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground"><UserRound className="size-3.5" aria-hidden="true" />追加背景</span>
                     <textarea
                       value={background}
                       onChange={(e) => onChange({ background: e.target.value })}
@@ -205,13 +215,16 @@ export function TrialLab({ scorer, template, background, onClose, onChange, onPu
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {background.trim() ? (
-                    <div className="flex gap-2.5 rounded-lg border bg-card p-4 text-[13px] leading-relaxed">
-                      <UserRound className="mt-0.5 size-4 shrink-0 text-primary" aria-label="背景" />
-                      <p className="whitespace-pre-wrap">{background}</p>
-                    </div>
-                  ) : null}
-                  <RenderedPrompt template={template} values={values} bound={scorer.inputFields} />
+                  {sections.map((sec) => (
+                    <section key={sec.key} className="flex flex-col gap-1">
+                      <h3 className="text-xs font-medium text-muted-foreground">{sec.title}</h3>
+                      {sec.key === 'rules' ? (
+                        <RenderedPrompt template={template} values={values} bound={scorer.inputFields} />
+                      ) : (
+                        <p className="whitespace-pre-wrap rounded-lg border bg-card p-4 text-[13px] leading-relaxed">{sec.body}</p>
+                      )}
+                    </section>
+                  ))}
                 </div>
               )
             ) : (

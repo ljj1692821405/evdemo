@@ -1,37 +1,45 @@
 'use client'
 
 import { useCallback } from 'react'
-import useSWR from 'swr'
-import { fieldDict as seedEntries, sampleSimTraj, scorers as seedScorers, type FieldEntry, type Scorer } from './mock-data'
+import {
+  dimensions as seedDimensions,
+  fieldDict as seedEntries,
+  sampleSimTraj,
+  scorers as seedScorers,
+  type Dimension,
+  type FieldEntry,
+  type Scorer,
+} from './mock-data'
+import { useAgentShared } from './tenant-store'
 
-const swrOptions = { revalidateOnFocus: false, revalidateOnReconnect: false, revalidateIfStale: false }
+export { useShared } from './shared-store'
 
-export function useShared<T>(key: string, initial: T) {
-  const { data, mutate } = useSWR<T>(key, null, { ...swrOptions, fallbackData: initial })
-  const set = useCallback(
-    (next: T | ((prev: T) => T)) =>
-      mutate((prev) => (typeof next === 'function' ? (next as (p: T) => T)(prev ?? initial) : next), { revalidate: false }),
-    [mutate, initial],
-  )
-  return [data ?? initial, set] as const
-}
+type DictState = { version: number; base: number; entries: FieldEntry[] }
 
-type DictState = { version: number; entries: FieldEntry[] }
+const defaultFieldNames = ['user_query', 'agent_reply', 'tool_calls', 'turn_status']
 
-const seedVersion = 5
-const seedDict: DictState = { version: seedVersion, entries: seedEntries }
+const seedDict = (isDemo: boolean): DictState =>
+  isDemo
+    ? { version: 5, base: 5, entries: seedEntries }
+    : { version: 1, base: 1, entries: seedEntries.filter((e) => defaultFieldNames.includes(e.logicalName)) }
 
 export function useFieldDict() {
-  const [state, setState] = useShared<DictState>('field-dict', seedDict)
+  const [state, setState] = useAgentShared<DictState>('field-dict', seedDict)
 
   const add = useCallback(
     (entry: FieldEntry) =>
-      setState((s) => (s.entries.some((e) => e.logicalName === entry.logicalName) ? s : { version: s.version + 1, entries: [...s.entries, entry] })),
+      setState((s) => (s.entries.some((e) => e.logicalName === entry.logicalName) ? s : { ...s, version: s.version + 1, entries: [...s.entries, entry] })),
     [setState],
   )
 
   const remove = useCallback(
-    (name: string) => setState((s) => ({ version: s.version + 1, entries: s.entries.filter((e) => e.logicalName !== name) })),
+    (name: string) => setState((s) => ({ ...s, version: s.version + 1, entries: s.entries.filter((e) => e.logicalName !== name) })),
+    [setState],
+  )
+
+  const update = useCallback(
+    (name: string, patch: Partial<Omit<FieldEntry, 'logicalName'>>) =>
+      setState((s) => ({ ...s, version: s.version + 1, entries: s.entries.map((e) => (e.logicalName === name ? { ...e, ...patch } : e)) })),
     [setState],
   )
 
@@ -39,15 +47,23 @@ export function useFieldDict() {
     entries: state.entries,
     names: state.entries.map((e) => e.logicalName),
     version: `fd_v${state.version}`,
-    changed: state.version !== seedVersion,
+    changed: state.version !== state.base,
     find: (name: string) => state.entries.find((e) => e.logicalName === name),
     add,
     remove,
+    update,
   }
 }
 
+const seedScorerList = (isDemo: boolean): Scorer[] => (isDemo ? seedScorers : [])
+const seedDimensionList = (isDemo: boolean): Dimension[] => (isDemo ? seedDimensions : [])
+
 export function useScorers() {
-  return useShared<Scorer[]>('scorers', seedScorers)
+  return useAgentShared<Scorer[]>('scorers', seedScorerList)
+}
+
+export function useDimensions(agentId?: string) {
+  return useAgentShared<Dimension[]>('dimensions', seedDimensionList, agentId)
 }
 
 export const isRawPath = (p: string) => p.startsWith('raw.')

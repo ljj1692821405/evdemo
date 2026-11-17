@@ -2,11 +2,20 @@ import Link from 'next/link'
 import { PageHeader, Mono, Tag } from '@/components/eval/primitives'
 import { ReviewBoard } from '@/components/eval/review-board'
 import { RunPicker } from '@/components/eval/run-picker'
+import { AgentDataGate } from '@/components/eval/agent-data-gate'
 import { runContext } from '@/lib/runs'
 
 export const metadata = { title: '核对看板 · 评测平台' }
 
-export default async function ReviewPage({ searchParams }: { searchParams: Promise<{ run?: string }> }) {
+export default function ReviewPage(props: { searchParams: Promise<{ run?: string }> }) {
+  return (
+    <AgentDataGate index={7} title="核对看板">
+      <ReviewContent {...props} />
+    </AgentDataGate>
+  )
+}
+
+async function ReviewContent({ searchParams }: { searchParams: Promise<{ run?: string }> }) {
   const { run: runId } = await searchParams
   const ctx = runContext(runId)
   if (!ctx) {

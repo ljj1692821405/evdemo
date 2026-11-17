@@ -47,6 +47,7 @@ export type FrozenSnapshot = {
   agentId: string
   agentCode: string
   configVersion: string
+  backgroundVersion?: string
   frozenAt: string
   items: FrozenItem[]
 }
@@ -60,7 +61,7 @@ export const seedAssets: Asset[] = [
     kind: 'skill',
     code: 'doc-edit',
     name: '文档改写',
-    agentId: 'ag_doc_editor',
+    agentId: 'ag_skill',
     source: 'auto',
     versions: [
       { version: 'v1', at: '10-20 10:00', note: '首次登记', intro: '对选中段落进行改写、润色与格式调整。', remark: '主链路能力，覆盖 70% 用户请求。', capability: '理解改写意图并生成局部修改指令', triggers: ['用户要求润色/改写', '选区非空'], uses: ['doc.read', 'doc.edit'] },
@@ -72,7 +73,7 @@ export const seedAssets: Asset[] = [
     kind: 'skill',
     code: 'outline',
     name: '大纲生成',
-    agentId: 'ag_doc_editor',
+    agentId: 'ag_skill',
     source: 'auto',
     versions: [
       { version: 'v1', at: '10-20 10:00', note: '首次登记', intro: '根据主题与已有内容生成文档大纲。', remark: '新建文档场景。', capability: '主题拆解与层级结构生成', triggers: ['空文档', '用户要求列提纲'], uses: ['outline.gen', 'doc.edit'] },
@@ -83,7 +84,7 @@ export const seedAssets: Asset[] = [
     kind: 'skill',
     code: 'clarify',
     name: '意图澄清',
-    agentId: 'ag_doc_editor',
+    agentId: 'ag_skill',
     source: 'report',
     versions: [
       { version: 'v1', at: '11-12 09:40', note: '新增：指令含糊时主动追问', intro: '在用户指令存在歧义时生成澄清问题。', remark: '对应维度 6.1 澄清时机。', capability: '歧义检测与追问生成', triggers: ['指代不明', '修改范围不明确'], uses: ['doc.read'] },
@@ -94,7 +95,7 @@ export const seedAssets: Asset[] = [
     kind: 'tool',
     code: 'doc.read',
     name: '读取文档',
-    agentId: 'ag_doc_editor',
+    agentId: 'ag_skill',
     source: 'auto',
     versions: [
       { version: 'v1', at: '10-20 10:00', note: '首次登记', intro: '按块读取当前文档内容。', remark: '只读，无副作用。', input: '{ docId: string, range?: [start, end] }', output: '{ blocks: Block[] }' },
@@ -105,7 +106,7 @@ export const seedAssets: Asset[] = [
     kind: 'tool',
     code: 'doc.edit',
     name: '编辑文档',
-    agentId: 'ag_doc_editor',
+    agentId: 'ag_skill',
     source: 'auto',
     versions: [
       { version: 'v2', at: '10-20 10:00', note: '首次登记', intro: '对指定块执行插入/替换/删除。', remark: '有副作用，需校验 workspace 变更。', input: '{ docId, ops: EditOp[] }', output: '{ ok: boolean, rev: number }' },
@@ -117,7 +118,7 @@ export const seedAssets: Asset[] = [
     kind: 'tool',
     code: 'doc.search',
     name: '文档检索',
-    agentId: 'ag_doc_editor',
+    agentId: 'ag_skill',
     source: 'auto',
     versions: [
       { version: 'v1', at: '11-08 14:20', note: '新增：语义检索文档片段', intro: '在当前文档内语义检索相关片段。', remark: '供跨段落改写使用。', input: '{ docId, query: string, topK?: number }', output: '{ hits: { blockId, score }[] }' },
@@ -128,11 +129,38 @@ export const seedAssets: Asset[] = [
     kind: 'tool',
     code: 'outline.gen',
     name: '大纲模板',
-    agentId: 'ag_doc_editor',
+    agentId: 'ag_skill',
     source: 'manual',
     versions: [
       { version: 'v1', at: '10-20 10:00', note: '首次登记（手动维护，Agent 无法上报）', intro: '返回预置的大纲模板。', remark: '由运营维护模板库。', input: '{ topic: string }', output: '{ outline: Node[] }' },
     ],
+  },
+  {
+    id: 'tl_ask_clarification',
+    kind: 'tool',
+    code: 'askClarification',
+    name: '澄清卡',
+    agentId: 'ag_skill',
+    source: 'manual',
+    versions: [{ version: 'v1', at: '11-16 10:00', note: '首次登记', intro: '弹出澄清卡，挂起等待用户作答。', remark: '' }],
+  },
+  {
+    id: 'tl_emit_skill_file',
+    kind: 'tool',
+    code: 'emitSkillFile',
+    name: '写回文件',
+    agentId: 'ag_skill',
+    source: 'manual',
+    versions: [{ version: 'v1', at: '11-16 10:00', note: '首次登记', intro: '向工作区写入/覆盖指定文件。', remark: '' }],
+  },
+  {
+    id: 'tl_get_editing_skill',
+    kind: 'tool',
+    code: 'getEditingSkill',
+    name: '读取 Skill',
+    agentId: 'ag_skill',
+    source: 'manual',
+    versions: [{ version: 'v1', at: '11-16 10:00', note: '首次登记', intro: '读取当前编辑中的 Skill 内容。', remark: '' }],
   },
   {
     id: 'sk_doc_qa',
@@ -161,7 +189,7 @@ export const seedAssets: Asset[] = [
 export const seedConfigs: AgentConfig[] = [
   {
     id: 'cfg_doc_editor_v1_0',
-    agentId: 'ag_doc_editor',
+    agentId: 'ag_skill',
     version: 'v1.0',
     at: '10-20 10:00',
     author: '张晨',
@@ -176,7 +204,7 @@ export const seedConfigs: AgentConfig[] = [
   },
   {
     id: 'cfg_doc_editor_v1_1',
-    agentId: 'ag_doc_editor',
+    agentId: 'ag_skill',
     version: 'v1.1',
     at: '11-08 14:20',
     author: '张晨',
@@ -192,7 +220,7 @@ export const seedConfigs: AgentConfig[] = [
   },
   {
     id: 'cfg_doc_editor_v1_2',
-    agentId: 'ag_doc_editor',
+    agentId: 'ag_skill',
     version: 'v1.2',
     at: '11-12 09:40',
     author: '李沐',
@@ -204,6 +232,22 @@ export const seedConfigs: AgentConfig[] = [
       { assetId: 'tl_doc_read', version: 'v1' },
       { assetId: 'tl_doc_edit', version: 'v3' },
       { assetId: 'tl_doc_search', version: 'v1' },
+    ],
+  },
+  {
+    id: 'cfg_skill_v1_3',
+    agentId: 'ag_skill',
+    version: 'v1.3',
+    at: '11-16 10:00',
+    author: '张晨',
+    note: '切换为 Skill 工具集：登记 askClarification / emitSkillFile / getEditingSkill，下线 doc.* 工具',
+    refs: [
+      { assetId: 'sk_doc_edit', version: 'v2' },
+      { assetId: 'sk_outline', version: 'v1' },
+      { assetId: 'sk_clarify', version: 'v1' },
+      { assetId: 'tl_ask_clarification', version: 'v1' },
+      { assetId: 'tl_emit_skill_file', version: 'v1' },
+      { assetId: 'tl_get_editing_skill', version: 'v1' },
     ],
   },
   {
@@ -253,7 +297,7 @@ export function diffItems(base: FrozenItem[], target: FrozenItem[]): ConfigDiff 
 export const toFrozen = (items: ResolvedItem[]): FrozenItem[] =>
   items.map(({ asset, ver }) => ({ kind: asset.kind, code: asset.code, name: asset.name, version: ver.version }))
 
-const agentCodes: Record<string, string> = { ag_doc_editor: 'doc-editor', ag_doc_qa: 'doc-qa' }
+const agentCodes: Record<string, string> = { ag_skill: 'skill-agent', ag_doc_qa: 'doc-qa' }
 
 const expBinding: Record<string, string> = {
   exp_031: 'cfg_doc_editor_v1_2',
@@ -274,6 +318,7 @@ export const frozenSnapshots: FrozenSnapshot[] = Object.freeze(
         agentId: cfg.agentId,
         agentCode: agentCodes[cfg.agentId] ?? cfg.agentId,
         configVersion: cfg.version,
+        backgroundVersion: 'v1',
         frozenAt: e.createdAt,
         items: toFrozen(resolveConfig(cfg, seedAssets)),
       }),

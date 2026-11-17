@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useShared } from './field-dict-store'
+import { useAgentShared } from './tenant-store'
 import { type Verdict } from './mock-data'
 
 export type AnnotationScoreValue = {
@@ -128,8 +128,10 @@ export const seedAnnotations: AnnotationItem[] = [
   },
 ]
 
+const seedAnnotationItems = (isDemo: boolean): AnnotationItem[] => (isDemo ? seedAnnotations : [])
+
 export function useAnnotationStore() {
-  const [items, setItems] = useShared<AnnotationItem[]>('annotation-items', seedAnnotations)
+  const [items, setItems] = useAgentShared<AnnotationItem[]>('annotation-items', seedAnnotationItems)
 
   const updateItemScore = useCallback(
     (id: string, dimKey: string, scoreVal: AnnotationScoreValue) => {

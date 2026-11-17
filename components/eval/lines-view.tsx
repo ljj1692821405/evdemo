@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Bot, Building2, Check, Cpu, ListChecks, Plus, Target, Trash2, X } from 'lucide-react'
+import { Bot, Building2, Check, Cpu, FileText, ListChecks, Plus, Target, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { dimensions } from '@/lib/mock-data'
+import { useDimensions } from '@/lib/field-dict-store'
 import {
   roleLabel,
   scheduleLabel,
@@ -57,6 +57,31 @@ function ConfirmDelete({ label, onConfirm }: { label: string; onConfirm: () => v
   )
 }
 
+function BackgroundEditor({ value, version, onSave }: { value: string; version: number; onSave: (text: string) => void }) {
+  const [draft, setDraft] = useState(value)
+  const dirty = draft.trim() !== value.trim()
+  return (
+    <div className="flex flex-col gap-2 border-b p-4">
+      <div className="flex items-center gap-2">
+        <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
+        <label htmlFor="agent-background" className="text-sm font-medium">业务背景</label>
+        <Tag className="font-mono">v{version}</Tag>
+        <Btn size="sm" variant="primary" className="ml-auto" disabled={!dirty} onClick={() => onSave(draft.trim())}>
+          <Check className="size-3.5" aria-hidden="true" />
+          保存
+        </Btn>
+      </div>
+      <textarea
+        id="agent-background"
+        rows={5}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        className="w-full resize-y rounded-md border border-input bg-card p-2.5 text-sm leading-relaxed focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+      />
+    </div>
+  )
+}
+
 export function LinesView() {
   const store = useLines()
   const scope = useScope()
@@ -64,6 +89,7 @@ export function LinesView() {
   const line = store.lines.find((l) => l.id === lineId) ?? store.lines[0]
   const [agentId, setAgentId] = useState<string | undefined>(scope.agent?.id)
   const agent = line?.agents.find((a) => a.id === agentId) ?? line?.agents[0]
+  const [agentDims] = useDimensions(agent?.id)
 
   const [lineForm, setLineForm] = useState<null | { name: string; code: string; owner: string; desc: string }>(null)
   const [agentForm, setAgentForm] = useState<null | { name: string; code: string; endpoint: string; protocol: Protocol; owner: string }>(null)
@@ -226,6 +252,13 @@ export function LinesView() {
               </div>
             </div>
 
+            <BackgroundEditor
+              key={agent.id}
+              value={agent.background ?? ''}
+              version={agent.backgroundVersion ?? 0}
+              onSave={(text) => store.setBackground(line.id, agent.id, text)}
+            />
+
             <div className="grid gap-4 p-4 xl:grid-cols-2">
               {/* 模型 */}
               <div className="rounded-md border">
@@ -309,7 +342,7 @@ export function LinesView() {
                     </div>
                     <fieldset className="flex flex-wrap gap-1.5">
                       <legend className="sr-only">评测维度</legend>
-                      {dimensions.map((d) => {
+                      {agentDims.map((d) => {
                         const on = taskForm.dimensions.includes(d.key)
                         return (
                           <button
@@ -347,7 +380,7 @@ export function LinesView() {
                         <div className="mt-1 flex flex-wrap gap-1">
                           {t.dimensions.map((k) => (
                             <Mono key={k} className="rounded bg-muted px-1 text-[11px] text-muted-foreground">
-                              {k} {dimensions.find((d) => d.key === k)?.name}
+                              {k} {agentDims.find((d) => d.key === k)?.name}
                             </Mono>
                           ))}
                         </div>

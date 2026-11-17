@@ -4,13 +4,22 @@ import { PageHeader, Panel, Tag, Ratio, Th, Td, Mono, VerdictBadge, Progress } f
 import { dimensions } from '@/lib/mock-data'
 import { runContext } from '@/lib/runs'
 import { RunPicker } from '@/components/eval/run-picker'
+import { AgentDataGate } from '@/components/eval/agent-data-gate'
 import { judgeDimension, pct } from '@/lib/stats'
 import { snapshotForExp } from '@/lib/capability-data'
 import { FrozenSnapshotCard } from '@/components/eval/capability-snapshot'
 
 export const metadata = { title: '数据看板 · 评测平台' }
 
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ run?: string }> }) {
+export default function DashboardPage(props: { searchParams: Promise<{ run?: string }> }) {
+  return (
+    <AgentDataGate index={6} title="数据看板">
+      <DashboardContent {...props} />
+    </AgentDataGate>
+  )
+}
+
+async function DashboardContent({ searchParams }: { searchParams: Promise<{ run?: string }> }) {
   const { run: runId } = await searchParams
   const ctx = runContext(runId)
   if (!ctx) {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useShared } from './field-dict-store'
-import { seedAssets, seedConfigs, type AgentConfig, type Asset, type AssetKind, type AssetSource, type AssetVersion, type AssetRef } from './capability-data'
+import { resolveConfig, seedAssets, seedConfigs, type AgentConfig, type Asset, type AssetKind, type AssetSource, type AssetVersion, type AssetRef } from './capability-data'
 
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 8)}`
 const now = () => {
@@ -16,6 +16,17 @@ const bumpMinor = (v: string) => {
 const bumpAssetVersion = (v: string) => `v${Number(v.replace(/^v/, '')) + 1}`
 
 export type NewAsset = { kind: AssetKind; code: string; name: string; source: AssetSource } & Omit<AssetVersion, 'version' | 'at' | 'note'>
+
+export function useAgentTools(agentId: string | undefined) {
+  const { assets, currentOf } = useCapabilities()
+  const cfg = agentId ? currentOf(agentId) : undefined
+  const tools = cfg
+    ? resolveConfig(cfg, assets)
+        .filter((i) => i.asset.kind === 'tool')
+        .map((i) => ({ name: i.asset.code, purpose: i.ver.intro, version: i.ver.version }))
+    : []
+  return { tools, configVersion: cfg?.version }
+}
 
 export function useCapabilities() {
   const [assets, setAssets] = useShared<Asset[]>('cap-assets', seedAssets)

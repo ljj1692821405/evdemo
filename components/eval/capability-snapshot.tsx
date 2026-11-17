@@ -18,6 +18,7 @@ export function FrozenSnapshotCard({ snap, compact }: { snap: FrozenSnapshot | u
         <Mono>
           {snap.agentCode}@{snap.configVersion}
         </Mono>
+        {snap.backgroundVersion ? <Tag className="font-mono">背景 {snap.backgroundVersion}</Tag> : null}
         <span className="text-muted-foreground">
           {skills.length} Skill · {tools.length} Tool · 冻结于 {snap.frozenAt}
         </span>

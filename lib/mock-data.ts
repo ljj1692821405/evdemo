@@ -41,6 +41,10 @@ export const cases: CaseItem[] = [
   { id: 'case_0010', datasetId: 'ds_golden_20', query: ['把标题改得更吸引人一点'], tags: ['编辑'], workspaceSize: '6.8 KB', gtSource: 'dataset', gtKeys: ['intent'], valid: true },
 ]
 
+export const DEMO_AGENT_ID = 'ag_skill'
+
+export type FieldContext = { kind: 'tools' } | { kind: 'enum'; values: { value: string; meaning: string }[] }
+
 export type FieldEntry = {
   logicalName: string
   paths: string[]
@@ -48,6 +52,7 @@ export type FieldEntry = {
   description: string
   source?: 'sim' | 'derived'
   script?: string
+  context?: FieldContext
 }
 
 export const fieldDictVersion = 'fd_v5'
@@ -55,14 +60,14 @@ export const fieldDictVersion = 'fd_v5'
 export const fieldDict: FieldEntry[] = [
   { logicalName: 'user_query', paths: ['sim_traj.turns[].user_input', 'sim_traj.turns[].query'], avgTokens: 60, description: '用户输入' },
   { logicalName: 'agent_reply', paths: ['sim_traj.turns[].final_answer', 'sim_traj.turns[].assistant_text'], avgTokens: 420, description: 'Agent 最终回复' },
-  { logicalName: 'tool_calls', paths: ['sim_traj.turns[].tool_calls'], avgTokens: 310, description: '工具调用列表' },
+  { logicalName: 'tool_calls', paths: ['sim_traj.turns[].tool_calls'], avgTokens: 310, description: '工具调用列表', context: { kind: 'tools' } },
   { logicalName: 'workspace_before', paths: ['sim_traj.workspace.before'], avgTokens: 7800, description: '工作区（前）' },
   { logicalName: 'workspace_after', paths: ['sim_traj.workspace.after'], avgTokens: 8100, description: '工作区（后）' },
   { logicalName: 'workspace_diff', paths: ['sim_traj.workspace.diff', 'sim_traj.extra.ws_patch'], avgTokens: 540, description: '工作区行级差异' },
   { logicalName: 'clarify_question', paths: ['sim_traj.turns[].clarify.question', 'raw.sse.events[].clarify'], avgTokens: 45, description: '澄清提问' },
   { logicalName: 'workspace_unchanged', paths: ['derived.ws_diff_extract.workspace_unchanged'], avgTokens: 120, description: '工作区未变动段落', source: 'derived', script: 'ws_diff_extract' },
-  { logicalName: 'tool_seq', paths: ['derived.tool_seq_compact.tool_seq'], avgTokens: 40, description: '工具调用序列', source: 'derived', script: 'tool_seq_compact' },
-  { logicalName: 'turn_status', paths: ['sim_traj.turns[].status'], avgTokens: 4, description: '轮次终态' },
+  { logicalName: 'tool_seq', paths: ['derived.tool_seq_compact.tool_seq'], avgTokens: 40, description: '工具调用序列', source: 'derived', script: 'tool_seq_compact', context: { kind: 'tools' } },
+  { logicalName: 'turn_status', paths: ['sim_traj.turns[].status'], avgTokens: 4, description: '轮次终态', context: { kind: 'enum', values: [{ value: 'completed', meaning: '正常结束' }, { value: 'failed', meaning: '执行失败' }, { value: 'timeout', meaning: '超时未结束' }] } },
 ]
 
 export const sampleSimTraj = {
@@ -119,7 +124,7 @@ export type Scorer = {
 }
 
 export const scorers: Scorer[] = [
-  { id: 'sc_intent', name: '意图裁判', outputs: ['5.1'], implType: 'llm_judge', inputFields: ['user_query', 'agent_reply'], promptVersion: 'pt_intent@v4', judgeModel: 'openai/gpt-5-mini', status: 'published', version: 3, createdBy: '林夏' },
+  { id: 'sc_intent', name: '意图裁判', outputs: ['5.1'], implType: 'llm_judge', inputFields: ['user_query', 'tool_calls', 'agent_reply'], promptVersion: 'pt_intent@v4', judgeModel: 'openai/gpt-5-mini', background: '错误路径：全程未弹任何卡，未获任何答复，直接 emitSkillFile 落盘，判为 fail。', status: 'published', version: 3, createdBy: '林夏' },
   { id: 'sc_tool', name: '工具规则校验', outputs: ['5.2'], implType: 'script', inputFields: ['user_query', 'tool_calls'], scriptId: 'scorers.tool:score', scriptHash: '9f3a1c7', status: 'published', version: 2, createdBy: '周延' },
   { id: 'sc_ws', name: '工作区差异裁判', outputs: ['5.3'], implType: 'hybrid', inputFields: ['user_query', 'workspace_diff'], promptVersion: 'pt_ws@v2', judgeModel: 'openai/gpt-5-mini', scriptId: 'scorers.ws:score', scriptHash: 'b27e04d', evidenceScript: 'preprocess.ws_diff:run', status: 'published', version: 1, createdBy: '周延' },
   { id: 'sc_reply', name: '回复完整性裁判', outputs: ['5.4'], implType: 'llm_judge', inputFields: ['user_query', 'agent_reply', 'workspace_after'], promptVersion: 'pt_reply@v2', judgeModel: 'openai/gpt-5-mini', status: 'draft', version: 2, createdBy: '林夏' },

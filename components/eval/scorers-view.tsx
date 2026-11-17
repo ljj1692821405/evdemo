@@ -17,10 +17,12 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { dimensions as initialDims, scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
-import { useFieldDict, useScorers } from '@/lib/field-dict-store'
+import { scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
+import { useDimensions, useFieldDict, useScorers } from '@/lib/field-dict-store'
+import { useScope } from '@/lib/tenant-store'
+import { useAgentTools } from '@/lib/capability-store'
 import { Panel, Tag, Mono, Th, Td, Btn } from './primitives'
-import { PromptEditor, defaultPrompt, defaultBackground, referencedVars, judgeModels } from './prompt-editor'
+import { PromptEditor, defaultPrompt, referencedVars, judgeModels } from './prompt-editor'
 import { TrialLab } from './trial-lab'
 import { CapabilityImportModal } from './capability-import-modal'
 
@@ -31,7 +33,15 @@ const implLabel = { llm_judge: 'LLM 裁判', script: '脚本', hybrid: '混合' 
 const emptyDim = { key: '', name: '', gtKey: '', release: '0.85' }
 
 export function ScorersView({ initialImportCapId }: { initialImportCapId?: string }) {
-  const [dims, setDims] = useState<Dimension[]>(initialDims)
+  const { agent } = useScope()
+  return <AgentScorers key={agent?.id ?? 'none'} initialImportCapId={initialImportCapId} />
+}
+
+function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
+  const { agent } = useScope()
+  const { tools } = useAgentTools(agent?.id)
+  const agentBackground = agent?.background ?? ''
+  const [dims, setDims] = useDimensions()
   const [list, setList] = useScorers()
   const dict = useFieldDict()
   const [sel, setSel] = useState(list[0]?.id || initialScorers[0].id)
@@ -49,7 +59,7 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
 
   const usesPrompt = s ? s.implType !== 'script' : false
   const template = s?.promptTemplate ?? (s ? defaultPrompt(s.inputFields) : '')
-  const background = s?.background ?? defaultBackground
+  const background = s?.background ?? ''
   const refs = usesPrompt ? referencedVars(template) : []
   const keyTaken = dims.some((d) => d.key === draft.key.trim())
   const canAdd = draft.key.trim() && draft.name.trim() && !keyTaken
@@ -120,6 +130,8 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
         scorer={s}
         template={template}
         background={background}
+        agentBackground={agentBackground}
+        tools={tools}
         onClose={() => setLab(false)}
         onChange={update}
         onPublish={() => update({ status: 'published' })}
@@ -182,6 +194,7 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
               </div>
             </form>
           ) : null}
+          {dims.length === 0 ? <p className="border-b px-4 py-8 text-center text-sm text-muted-foreground">暂无维度</p> : null}
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40">
               <tr><Th className="w-14">key</Th><Th>名称</Th><Th>阈值</Th><Th className="w-16 text-center">启用</Th><Th className="w-12 text-center" /></tr>
@@ -298,6 +311,8 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
                         insertRef={editorRef}
                         template={template}
                         background={background}
+                        agentBackground={agentBackground}
+                        agentBackgroundVersion={agent?.backgroundVersion ?? 0}
                         model={s.judgeModel ?? judgeModels[0]}
                         promptVersion={s.promptVersion ?? `pt_${s.id.replace('sc_', '')}@v1`}
                         inputFields={s.inputFields}
