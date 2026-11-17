@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, MessageSquare, Bot, Wrench, Gavel, FileDiff, Zap, Check, X, ScrollText, GitCompareArrows, ListChecks } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, MessageSquare, Bot, Wrench, Gavel, FileDiff, Zap, Check, X, ScrollText, GitCompareArrows, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dimensions, reviewSchema, reviewTurns as allTurns, type Verdict } from '@/lib/mock-data'
 import { agreementStats, pct } from '@/lib/stats'
@@ -113,37 +113,30 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
           <div className="flex flex-wrap items-center gap-2">
             <Mono className="text-base font-semibold">{turn.caseId}</Mono>
             {turn.totalTurns > 1 ? (
-              <div role="tablist" aria-label="轮次快捷切换" className="flex items-center gap-1 rounded-md border bg-muted/40 p-0.5">
-                {Array.from({ length: turn.totalTurns }, (_, i) => i + 1).map((tNo) => {
-                  const active = tNo === turn.turnNo
-                  const targetIdx = reviewTurns.findIndex((t) => t.caseId === turn.caseId && t.turnNo === tNo)
-                  return (
-                    <button
-                      key={tNo}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      disabled={targetIdx === -1}
-                      onClick={() => {
-                        if (targetIdx !== -1) {
-                          setIdx(targetIdx)
-                          setFocusDim(0)
-                          setExpanded(false)
-                        }
-                      }}
-                      className={cn(
-                        'flex h-6 min-w-12 items-center justify-center rounded px-2 font-mono text-xs font-medium transition-colors',
-                        active
-                          ? 'bg-primary text-primary-foreground shadow-xs'
-                          : 'text-muted-foreground hover:bg-card hover:text-foreground',
-                        targetIdx === -1 && 'cursor-not-allowed opacity-40',
-                      )}
-                    >
-                      turn {tNo}
-                    </button>
-                  )
-                })}
-              </div>
+              <label className="relative inline-flex items-center">
+                <span className="sr-only">选择轮次</span>
+                <select
+                  aria-label="选择轮次"
+                  value={turn.turnNo}
+                  onChange={(e) => {
+                    const targetTurnNo = Number(e.target.value)
+                    const targetIdx = reviewTurns.findIndex((t) => t.caseId === turn.caseId && t.turnNo === targetTurnNo)
+                    if (targetIdx !== -1) {
+                      setIdx(targetIdx)
+                      setFocusDim(0)
+                      setExpanded(false)
+                    }
+                  }}
+                  className="h-7 cursor-pointer appearance-none rounded-md border border-input bg-card pl-2.5 pr-7 font-mono text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  {Array.from({ length: turn.totalTurns }, (_, i) => i + 1).map((tNo) => (
+                    <option key={tNo} value={tNo}>
+                      turn {tNo} / {turn.totalTurns}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2 size-3.5 text-muted-foreground" aria-hidden="true" />
+              </label>
             ) : (
               <Tag>turn 1/1</Tag>
             )}
