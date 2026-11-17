@@ -19,6 +19,7 @@ export type Agent = {
   owner: string
   background?: string
   backgroundVersion?: number
+  dataSourceNote?: string
   models: ModelBinding[]
   tasks: EvalTask[]
 }
@@ -30,6 +31,11 @@ export const scheduleLabel: Record<TaskSchedule, string> = { manual: '手动触�
 const skillAgentBackground = `Skill-Agent 负责创建和编辑 Skill 文件，写入前需经用户确认。
 1. 模糊意图：Agent 调 askClarification 弹出澄清卡 → 挂起等待 → 用户作答 → 自动调 emitSkillFile 写入
 2. 明确意图：Agent 不弹澄清卡 → 直接弹写入确认卡 → 用户确认 → 写入`
+
+const skillAgentDataSourceNote = `1. Case 最简结构为 query + 工作区快照，另带用于统计分桶的标签字段。
+2. 仿真脚本只读取其中几个字段，请求 Agent 并同步后处理；仿真结果包含 Case 全部字段，由评测开发在脚本中保证。
+3. 多轮对话以 turn 为最小评测单元。带初始工作区的 Case 只在首轮记录；后续轮若修改工作区则从 SSE 打捞，未修改则继承上一轮。
+4. 工作区 diff 由前置脚本计算，结合用户 query 与 Agent 回复判断：改的地方对不对、有没有改到别的区域。`
 
 const seedLines: ProductLine[] = [
   {
@@ -48,6 +54,7 @@ const seedLines: ProductLine[] = [
         owner: '张晨',
         background: skillAgentBackground,
         backgroundVersion: 1,
+        dataSourceNote: skillAgentDataSourceNote,
         models: [
           { id: 'm1', role: 'target', model: 'openai/gpt-5' },
           { id: 'm2', role: 'judge', model: 'openai/gpt-5-mini' },
@@ -132,6 +139,8 @@ export function useLines() {
       setLines((ls) => ls.map((l) => (l.id === lineId ? { ...l, agents: l.agents.filter((a) => a.id !== agentId) } : l))),
     setBackground: (lineId: string, agentId: string, background: string) =>
       updateAgent(lineId, agentId, (a) => ({ ...a, background, backgroundVersion: (a.backgroundVersion ?? 0) + 1 })),
+    setDataSourceNote: (lineId: string, agentId: string, dataSourceNote: string) =>
+      updateAgent(lineId, agentId, (a) => ({ ...a, dataSourceNote })),
     addModel: (lineId: string, agentId: string, m: Omit<ModelBinding, 'id'>) =>
       updateAgent(lineId, agentId, (a) => ({ ...a, models: [...a.models, { ...m, id: uid('m') }] })),
     removeModel: (lineId: string, agentId: string, id: string) =>

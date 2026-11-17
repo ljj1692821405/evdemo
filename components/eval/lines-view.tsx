@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Bot, Building2, Check, Cpu, FileText, ListChecks, Plus, Target, Trash2, X } from 'lucide-react'
+import { Bot, Building2, Check, Cpu, FileText, ListChecks, Plus, Target, Trash2, Workflow, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useDimensions } from '@/lib/field-dict-store'
 import {
@@ -57,22 +57,36 @@ function ConfirmDelete({ label, onConfirm }: { label: string; onConfirm: () => v
   )
 }
 
-function BackgroundEditor({ value, version, onSave }: { value: string; version: number; onSave: (text: string) => void }) {
+function NoteEditor({
+  id,
+  label,
+  icon: Icon,
+  value,
+  version,
+  onSave,
+}: {
+  id: string
+  label: string
+  icon: typeof Bot
+  value: string
+  version?: number
+  onSave: (text: string) => void
+}) {
   const [draft, setDraft] = useState(value)
   const dirty = draft.trim() !== value.trim()
   return (
     <div className="flex flex-col gap-2 border-b p-4">
       <div className="flex items-center gap-2">
-        <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
-        <label htmlFor="agent-background" className="text-sm font-medium">业务背景</label>
-        <Tag className="font-mono">v{version}</Tag>
+        <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+        <label htmlFor={id} className="text-sm font-medium">{label}</label>
+        {version === undefined ? null : <Tag className="font-mono">v{version}</Tag>}
         <Btn size="sm" variant="primary" className="ml-auto" disabled={!dirty} onClick={() => onSave(draft.trim())}>
           <Check className="size-3.5" aria-hidden="true" />
           保存
         </Btn>
       </div>
       <textarea
-        id="agent-background"
+        id={id}
         rows={5}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
@@ -252,11 +266,22 @@ export function LinesView() {
               </div>
             </div>
 
-            <BackgroundEditor
-              key={agent.id}
+            <NoteEditor
+              key={`background:${agent.id}`}
+              id="agent-background"
+              label="业务背景"
+              icon={FileText}
               value={agent.background ?? ''}
               version={agent.backgroundVersion ?? 0}
               onSave={(text) => store.setBackground(line.id, agent.id, text)}
+            />
+            <NoteEditor
+              key={`data-source:${agent.id}`}
+              id="agent-data-source"
+              label="数据来源说明"
+              icon={Workflow}
+              value={agent.dataSourceNote ?? ''}
+              onSave={(text) => store.setDataSourceNote(line.id, agent.id, text)}
             />
 
             <div className="grid gap-4 p-4 xl:grid-cols-2">
