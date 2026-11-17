@@ -6,9 +6,9 @@ export const metadata = { title: '数据集 / Case · 评测平台' }
 
 export default function DatasetsPage() {
   return (
-    <AgentDataGate index={1} title="数据集 / Case">
+    <AgentDataGate index={2} title="数据集 / Case">
       <div>
-        <PageHeader index={1} title="数据集 / Case" />
+        <PageHeader index={2} title="数据集 / Case" />
         <DatasetsView />
       </div>
     </AgentDataGate>

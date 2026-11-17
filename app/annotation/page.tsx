@@ -7,7 +7,7 @@ export default function AnnotationPage() {
   return (
     <div>
       <PageHeader
-        index={8}
+        index={9}
         title="标注工作台"
         back="/review"
       />

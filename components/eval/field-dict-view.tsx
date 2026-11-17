@@ -13,6 +13,14 @@ import { usePreprocessScripts } from './preprocess-pipeline'
 
 const isEmpty = (v: unknown) => v === undefined || v === null || v === ''
 
+type ContextKind = 'none' | 'tools' | 'enum'
+
+const contextKinds: { id: ContextKind; label: string }[] = [
+  { id: 'none', label: '无' },
+  { id: 'tools', label: '工具清单' },
+  { id: 'enum', label: '取值说明' },
+]
+
 export function FieldDictVersionTag() {
   const { version } = useFieldDict()
   return <Tag tone="primary"><Mono>{version}</Mono></Tag>
@@ -24,22 +32,23 @@ export function FieldDictView() {
   const [scripts] = usePreprocessScripts()
   const { agent } = useScope()
   const { tools, configVersion } = useAgentTools(agent?.id)
-  const [selected, setSelected] = useState('agent_reply')
-
-  const setContextKind = (f: FieldEntry, kind: string) => {
-    const context: FieldContext | undefined =
-      kind === 'tools' ? { kind: 'tools' } : kind === 'enum' ? { kind: 'enum', values: f.context?.kind === 'enum' ? f.context.values : [] } : undefined
-    dict.update(f.logicalName, { context })
-    setSelected(f.logicalName)
-  }
+  const [selected, setSelected] = useState('tool_calls')
   const [adding, setAdding] = useState(false)
   const [confirming, setConfirming] = useState<string | null>(null)
   const entry = dict.find(selected) ?? dict.entries[0]
+  const entryKind: ContextKind = entry?.context?.kind ?? 'none'
+
+  const setContextKind = (f: FieldEntry, kind: ContextKind) => {
+    const context: FieldContext | undefined =
+      kind === 'tools' ? { kind: 'tools' } : kind === 'enum' ? { kind: 'enum', values: f.context?.kind === 'enum' ? f.context.values : [] } : undefined
+    dict.update(f.logicalName, { context })
+  }
 
   const refsOf = (name: string) => [
     ...scorers.filter((s) => s.inputFields.includes(name)).map((s) => ({ kind: 'scorer' as const, id: `${s.id}@${s.version}` })),
     ...scripts.filter((s) => s.inputs.includes(name)).map((s) => ({ kind: 'script' as const, id: s.name })),
   ]
+  const entryRefs = entry ? refsOf(entry.logicalName) : []
 
   const trace = useMemo(() => {
     if (!entry) return { steps: [], hit: -1 }
@@ -60,7 +69,7 @@ export function FieldDictView() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 p-6 xl:grid-cols-[1fr_380px]">
+    <div className="grid grid-cols-1 gap-4 p-6 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
       <Panel
         title={<span className="flex items-center gap-2">字段 <Tag className="font-mono">{dict.entries.length}</Tag></span>}
         actions={
@@ -73,7 +82,8 @@ export function FieldDictView() {
             <Plus className="size-3.5" aria-hidden="true" />新增字段
           </button>
         }
-        bodyClassName="p-0"
+        className="min-w-0 lg:self-start"
+        bodyClassName="overflow-x-auto p-0"
       >
         {adding ? (
           <NewFieldForm
@@ -88,69 +98,44 @@ export function FieldDictView() {
         ) : null}
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40">
-            <tr><Th>逻辑名</Th><Th>物理路径（按序取第一非空）</Th><Th>附带上下文</Th><Th>引用</Th><Th className="text-right">体积估算</Th><Th className="w-10"><span className="sr-only">操作</span></Th></tr>
+            <tr><Th>字段</Th><Th>附带上下文</Th><Th>引用</Th><Th className="text-right">体积</Th><Th className="w-10"><span className="sr-only">操作</span></Th></tr>
           </thead>
           <tbody className="divide-y">
             {dict.entries.map((f) => {
               const bad = f.paths.some(isRawPath)
               const refs = refsOf(f.logicalName)
               const isConfirming = confirming === f.logicalName
+              const active = f.logicalName === entry?.logicalName
               return (
                 <tr
                   key={f.logicalName}
                   onClick={() => setSelected(f.logicalName)}
-                  className={cn('group cursor-pointer align-top', isConfirming ? 'bg-fail-soft' : f.logicalName === entry?.logicalName ? 'bg-accent/50' : 'hover:bg-muted/40')}
+                  aria-selected={active}
+                  className={cn(
+                    'group cursor-pointer',
+                    isConfirming ? 'bg-fail-soft' : active ? 'bg-accent/60 shadow-[inset_2px_0_0_var(--color-primary)]' : 'hover:bg-muted/40',
+                  )}
                 >
                   <Td>
                     <div className="flex items-center gap-2">
                       <Mono className="font-semibold">{f.logicalName}</Mono>
-                      {f.source === 'derived' ? <Tag tone="primary" className="font-mono">派生</Tag> : null}
+                      {f.source === 'derived' ? <Tag tone="primary">派生</Tag> : null}
                       {bad ? <AlertOctagon className="size-3.5 text-fail" aria-label="含非法路径" /> : null}
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">{f.description}</div>
                   </Td>
                   <Td>
-                    <ol className="flex flex-col gap-1">
-                      {f.paths.map((p, i) => (
-                        <li key={p} className="flex items-center gap-1.5">
-                          <Mono className="w-3 text-muted-foreground">{i + 1}</Mono>
-                          <Mono className={cn(isRawPath(p) && 'rounded bg-fail-soft px-1 text-fail line-through', isDerivedPath(p) && 'text-primary')}>{p}</Mono>
-                        </li>
-                      ))}
-                    </ol>
-                  </Td>
-                  <Td onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1.5">
-                      <select
-                        aria-label={`${f.logicalName} 附带上下文`}
-                        value={f.context?.kind ?? 'none'}
-                        onChange={(e) => setContextKind(f, e.target.value)}
-                        className="h-7 rounded-md border bg-card px-1.5 text-xs"
-                      >
-                        <option value="none">无</option>
-                        <option value="tools">工具清单</option>
-                        <option value="enum">取值说明</option>
-                      </select>
-                      {f.context?.kind === 'tools' ? <Tag tone="primary" className="font-mono">{tools.length}</Tag> : null}
-                      {f.context?.kind === 'enum' ? <Tag tone="primary" className="font-mono">{f.context.values.length}</Tag> : null}
-                    </div>
-                  </Td>
-                  <Td>
-                    {refs.length ? (
-                      <div className="flex flex-wrap gap-1">
-                        {refs.map((r) => (
-                          <Tag key={r.id} tone={isConfirming ? 'fail' : 'neutral'} className="font-mono">
-                            {r.kind === 'scorer' ? <Gavel className="size-3" aria-hidden="true" /> : <Code2 className="size-3" aria-hidden="true" />}
-                            {r.id}
-                          </Tag>
-                        ))}
-                      </div>
+                    {f.context?.kind === 'tools' ? (
+                      <Tag tone="primary"><Wrench className="size-3" aria-hidden="true" />工具清单 <span className="font-mono">{tools.length}</span></Tag>
+                    ) : f.context?.kind === 'enum' ? (
+                      <Tag tone="primary">取值说明 <span className="font-mono">{f.context.values.length}</span></Tag>
                     ) : (
                       <Mono className="text-muted-foreground">—</Mono>
                     )}
                   </Td>
+                  <Td>{refs.length ? <Tag tone={isConfirming ? 'fail' : 'neutral'} className="font-mono">{refs.length}</Tag> : <Mono className="text-muted-foreground">—</Mono>}</Td>
                   <Td className="text-right">
-                    <Tag tone={f.avgTokens > 2000 ? 'warn' : 'neutral'} className="font-mono">~{f.avgTokens.toLocaleString()} tok</Tag>
+                    <Mono className={cn('whitespace-nowrap text-[11px]', f.avgTokens > 2000 ? 'text-warn' : 'text-muted-foreground')}>~{f.avgTokens.toLocaleString()} tok</Mono>
                   </Td>
                   <Td className="text-right" onClick={(e) => e.stopPropagation()}>
                     {isConfirming ? (
@@ -158,7 +143,7 @@ export function FieldDictView() {
                         <button
                           type="button"
                           onClick={() => remove(f.logicalName)}
-                          className="inline-flex h-7 items-center gap-1 rounded-md bg-fail px-2 text-xs text-white hover:bg-fail/90"
+                          className="inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-md bg-fail px-2 text-xs text-primary-foreground hover:bg-fail/90"
                         >
                           <Trash2 className="size-3" aria-hidden="true" />删除
                         </button>
@@ -189,27 +174,54 @@ export function FieldDictView() {
         </table>
       </Panel>
 
-      <div className="flex flex-col gap-4">
-        {entry ? (
-          <Panel title={<span className="flex items-center gap-2">裁判上下文 <Mono>{entry.logicalName}</Mono></span>}>
-            <div className="flex flex-col gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">说明</span>
-                <input
-                  key={`${entry.logicalName}:${entry.description}`}
-                  defaultValue={entry.description}
-                  onBlur={(e) => {
-                    const next = e.target.value.trim()
-                    if (next && next !== entry.description) dict.update(entry.logicalName, { description: next })
-                  }}
-                  className="h-8 rounded-md border bg-card px-2 text-xs"
-                />
-              </label>
+      {entry ? (
+        <aside
+          key={entry.logicalName}
+          aria-label={`${entry.logicalName} 详情`}
+          className="flex flex-col rounded-lg border bg-card lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:self-start lg:overflow-y-auto"
+        >
+          <div className="flex items-center gap-2 border-b px-4 py-3">
+            <Mono className="text-sm font-semibold">{entry.logicalName}</Mono>
+            {entry.source === 'derived' ? <Tag tone="primary">派生</Tag> : null}
+            <Mono className="ml-auto whitespace-nowrap text-[11px] text-muted-foreground">~{entry.avgTokens.toLocaleString()} tok</Mono>
+          </div>
+
+          <div className="flex flex-col gap-4 p-4">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium">说明</span>
+              <input
+                defaultValue={entry.description}
+                onBlur={(e) => {
+                  const next = e.target.value.trim()
+                  if (next && next !== entry.description) dict.update(entry.logicalName, { description: next })
+                }}
+                className="h-8 rounded-md border bg-card px-2 text-xs focus-visible:outline-2 focus-visible:outline-ring"
+              />
+            </label>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium">附带上下文</span>
+              <div role="radiogroup" aria-label="附带上下文" className="grid grid-cols-3 gap-0.5 rounded-md border bg-muted/40 p-0.5">
+                {contextKinds.map((k) => (
+                  <button
+                    key={k.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={entryKind === k.id}
+                    onClick={() => setContextKind(entry, k.id)}
+                    className={cn(
+                      'h-7 rounded text-xs font-medium transition-colors',
+                      entryKind === k.id ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {k.label}
+                  </button>
+                ))}
+              </div>
+
               {entry.context?.kind === 'tools' ? (
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Wrench className="size-3.5" aria-hidden="true" />
-                    工具清单
                     {agent && configVersion ? <Tag className="font-mono">{agent.code}@{configVersion}</Tag> : null}
                     <Link href="/lines" aria-label="管理工具" className="ml-auto flex size-6 items-center justify-center rounded hover:bg-muted hover:text-foreground">
                       <Pencil className="size-3" aria-hidden="true" />
@@ -230,55 +242,58 @@ export function FieldDictView() {
                 </div>
               ) : null}
               {entry.context?.kind === 'enum' ? (
-                <EnumEditor
-                  key={entry.logicalName}
-                  values={entry.context.values}
-                  onSave={(values) => dict.update(entry.logicalName, { context: { kind: 'enum', values } })}
-                />
+                <EnumEditor values={entry.context.values} onSave={(values) => dict.update(entry.logicalName, { context: { kind: 'enum', values } })} />
               ) : null}
             </div>
-          </Panel>
-        ) : null}
-        {entry ? (
-          <Panel title={<span className="flex items-center gap-2">解析 <Mono>{entry.logicalName}</Mono></span>} actions={<Tag>样例 sim_traj</Tag>}>
-            <ol className="flex flex-col gap-2">
-              {trace.steps.map((s, i) => {
-                const hit = i === trace.hit
-                const skipped = trace.hit !== -1 && i > trace.hit
-                return (
-                  <li
-                    key={s.path}
-                    className={cn(
-                      'rounded-md border p-2.5',
-                      hit && 'border-pass bg-pass-soft',
-                      s.raw && 'border-fail bg-fail-soft',
-                      skipped && 'opacity-50',
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <Mono className={cn(s.raw && 'text-fail')}>{s.path}</Mono>
-                      {s.raw ? <Tag tone="fail">加载拒绝</Tag> : hit ? <Tag tone="pass">命中</Tag> : skipped ? <Tag>未访问</Tag> : <Tag tone="na">空</Tag>}
-                    </div>
-                    {!s.raw && !skipped ? (
-                      <div className="mt-1.5 flex items-start gap-1 text-xs text-muted-foreground">
-                        <CornerDownRight className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-                        <Mono className="break-all">{JSON.stringify(s.value ?? null)}</Mono>
+
+            {entryRefs.length ? (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium">引用</span>
+                <div className="flex flex-wrap gap-1">
+                  {entryRefs.map((r) => (
+                    <Tag key={r.id} className="font-mono">
+                      {r.kind === 'scorer' ? <Gavel className="size-3" aria-hidden="true" /> : <Code2 className="size-3" aria-hidden="true" />}
+                      {r.id}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium">物理路径</span>
+              <ol className="flex flex-col gap-1.5">
+                {trace.steps.map((s, i) => {
+                  const hit = i === trace.hit
+                  const skipped = trace.hit !== -1 && i > trace.hit
+                  return (
+                    <li
+                      key={s.path}
+                      className={cn('rounded-md border p-2', hit && 'border-pass bg-pass-soft', s.raw && 'border-fail bg-fail-soft', skipped && 'opacity-50')}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <Mono className={cn('min-w-0 break-all text-[11px]', s.raw && 'text-fail line-through', isDerivedPath(s.path) && 'text-primary')}>{s.path}</Mono>
+                        {s.raw ? <Tag tone="fail">拒绝</Tag> : hit ? <Tag tone="pass">命中</Tag> : skipped ? <Tag>未访问</Tag> : <Tag tone="na">空</Tag>}
                       </div>
-                    ) : null}
-                    {s.raw ? <p className="mt-1.5 text-xs text-fail">L-raw 永不进评分</p> : null}
-                  </li>
-                )
-              })}
-            </ol>
-            <div className="mt-3 rounded-md bg-muted/50 p-2.5 text-xs">
-              结果：{trace.hit === -1 ? <Mono className="text-na">null</Mono> : <Mono className="text-pass">paths[{trace.hit}]</Mono>}
+                      {hit ? (
+                        <div className="mt-1.5 flex items-start gap-1 text-xs text-muted-foreground">
+                          <CornerDownRight className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                          <Mono className="line-clamp-3 break-all text-[11px]">{JSON.stringify(s.value ?? null)}</Mono>
+                        </div>
+                      ) : null}
+                    </li>
+                  )
+                })}
+              </ol>
             </div>
-          </Panel>
-        ) : null}
-        <Panel title="样例 sim_traj" bodyClassName="p-0">
-          <pre className="max-h-72 overflow-auto p-3 font-mono text-[11px] leading-relaxed">{JSON.stringify(sampleSimTraj, null, 2)}</pre>
-        </Panel>
-      </div>
+
+            <details className="rounded-md border">
+              <summary className="cursor-pointer px-2.5 py-2 text-xs font-medium">样例 sim_traj</summary>
+              <pre className="max-h-64 overflow-auto border-t p-2.5 font-mono text-[11px] leading-relaxed">{JSON.stringify(sampleSimTraj, null, 2)}</pre>
+            </details>
+          </div>
+        </aside>
+      ) : null}
     </div>
   )
 }
@@ -415,7 +430,7 @@ function NewFieldForm({ existing, onCancel, onCreate }: { existing: string[]; on
         </label>
       </div>
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-xs text-muted-foreground">物理路径（按序取第一非空）</legend>
+        <legend className="mb-1 text-xs text-muted-foreground">物理路径</legend>
         {paths.map((p, i) => {
           const raw = isRawPath(p.trim())
           return (

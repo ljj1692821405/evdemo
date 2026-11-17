@@ -13,7 +13,7 @@ export const metadata = { title: '数据看板 · 评测平台' }
 
 export default function DashboardPage(props: { searchParams: Promise<{ run?: string }> }) {
   return (
-    <AgentDataGate index={6} title="数据看板">
+    <AgentDataGate index={7} title="数据看板">
       <DashboardContent {...props} />
     </AgentDataGate>
   )
@@ -25,7 +25,7 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<{ run?
   if (!ctx) {
     return (
       <div>
-        <PageHeader index={6} title="数据看板" back="/experiments" />
+        <PageHeader index={7} title="数据看板" back="/experiments" />
         <RunPicker basePath="/dashboard" />
       </div>
     )
@@ -38,7 +38,7 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<{ run?
   return (
     <div>
       <PageHeader
-        index={6}
+        index={7}
         title="数据看板"
         back="/dashboard"
         meta={

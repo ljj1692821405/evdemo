@@ -7,11 +7,11 @@ export const metadata = { title: '字段字典 · 评测平台' }
 export default function FieldDictPage() {
   return (
     <div>
-      <PageHeader index={2} title="字段字典" back="/datasets" actions={<FieldDictVersionTag />} />
-      <div className="px-6 pt-6">
+      <PageHeader index={3} title="字段字典" back="/datasets" actions={<FieldDictVersionTag />} />
+      <FieldDictView />
+      <div className="px-6 pb-6">
         <PreprocessPipeline />
       </div>
-      <FieldDictView />
     </div>
   )
 }

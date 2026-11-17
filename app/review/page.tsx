@@ -9,7 +9,7 @@ export const metadata = { title: '核对看板 · 评测平台' }
 
 export default function ReviewPage(props: { searchParams: Promise<{ run?: string }> }) {
   return (
-    <AgentDataGate index={7} title="核对看板">
+    <AgentDataGate index={8} title="核对看板">
       <ReviewContent {...props} />
     </AgentDataGate>
   )
@@ -21,7 +21,7 @@ async function ReviewContent({ searchParams }: { searchParams: Promise<{ run?: s
   if (!ctx) {
     return (
       <div>
-        <PageHeader index={7} title="核对看板" back="/dashboard" />
+        <PageHeader index={8} title="核对看板" back="/dashboard" />
         <RunPicker basePath="/review" />
       </div>
     )
@@ -30,7 +30,7 @@ async function ReviewContent({ searchParams }: { searchParams: Promise<{ run?: s
   return (
     <div>
       <PageHeader
-        index={7}
+        index={8}
         title="核对看板"
         back={`/dashboard?run=${run.id}`}
         meta={

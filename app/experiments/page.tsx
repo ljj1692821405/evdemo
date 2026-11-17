@@ -6,7 +6,7 @@ export const metadata = { title: '实验与评测 · 评测平台' }
 
 export default function ExperimentsPage(props: { searchParams: Promise<{ id?: string; snapshot?: string }> }) {
   return (
-    <AgentDataGate index={5} title="实验与评测">
+    <AgentDataGate index={6} title="实验与评测">
       <ExperimentsContent {...props} />
     </AgentDataGate>
   )
@@ -16,7 +16,7 @@ async function ExperimentsContent({ searchParams }: { searchParams: Promise<{ id
   const { id, snapshot } = await searchParams
   return (
     <div>
-      <PageHeader index={5} title="实验与评测" back="/simulations" />
+      <PageHeader index={6} title="实验与评测" back="/simulations" />
       <ExperimentsView key={`${id ?? ''}-${snapshot ?? ''}`} initialId={id} newFromSnapshot={snapshot} />
     </div>
   )
