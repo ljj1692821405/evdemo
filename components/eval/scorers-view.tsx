@@ -280,7 +280,7 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                 <Stepper status={s.status} trial={t} />
               }
             >
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_0.9fr]">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div className="flex flex-col gap-4">
                   <Field label="输出维度">
                     <div className="flex flex-wrap gap-1.5">

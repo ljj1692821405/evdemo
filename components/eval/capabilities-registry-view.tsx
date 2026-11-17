@@ -22,6 +22,7 @@ import {
   Clock,
   Sparkles,
   ExternalLink,
+  FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tag, Mono, Btn, Th, Td, Panel } from '@/components/eval/primitives'
@@ -44,6 +45,7 @@ const executionTypeMap: Record<CapabilityExecutionType, { label: string; icon: R
   python_adapter: { label: 'Python 适配器', icon: Terminal, tone: 'pass' },
   http_api: { label: 'HTTP API', icon: Globe, tone: 'primary' },
   vlm_judge: { label: 'VLM 视觉裁判', icon: ImageIcon, tone: 'warn' },
+  llm_judge: { label: 'LLM 文本裁判', icon: FileText, tone: 'primary' },
   custom_script: { label: '自定义脚本', icon: FileCode, tone: 'neutral' },
 }
 
@@ -106,14 +108,9 @@ export function CapabilitiesRegistryView() {
           <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <Cpu className="size-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-foreground">通用评测能力注册库</h2>
-              <Tag tone="primary">{capabilities.length} 项已接入</Tag>
-            </div>
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              为平台注册底层原子评测能力（Python 适配器 / HTTP API），供各业务线评分器自由引用与映射
-            </div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-foreground">通用评测能力注册库</h2>
+            <Tag tone="primary">{capabilities.length} 项已接入</Tag>
           </div>
         </div>
 
@@ -452,7 +449,6 @@ export function CapabilitiesRegistryView() {
                           <Play className="size-3.5 text-primary" />
                           调试输入 (Test Inputs)
                         </span>
-                        <span className="text-[11px] text-muted-foreground">根据 Input Schema 动态生成</span>
                       </div>
 
                       <div className="space-y-2.5">
