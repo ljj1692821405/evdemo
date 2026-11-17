@@ -11,9 +11,9 @@ export type CapabilityInputField = {
   type: InputFieldType
   required: boolean
   description: string
-  defaultMapping?: string // 建议映射的数据集/字典字段
+  defaultMapping?: string
   placeholder?: string
-  accept?: string // 例如 image/*, video/*
+  accept?: string
 }
 
 export type CapabilityOutputMetric = {
@@ -32,8 +32,10 @@ export type DimensionTemplate = {
   description: string
   suggestedPrompt?: string
   defaultRubric?: string
-  requiredInputs: string[] // 需要该能力的哪些 inputField
+  requiredInputs: string[]
 }
+
+export type CapabilityExecutionType = 'python_adapter' | 'http_api' | 'vlm_judge' | 'custom_script'
 
 export type RegisteredCapability = {
   id: string
@@ -41,29 +43,38 @@ export type RegisteredCapability = {
   name: string
   category: 'multimodal_gen' | 'agent_action' | 'nlp_quality' | 'safety' | 'custom'
   version: string
+  status: 'draft' | 'published'
   author: string
   updatedAt: string
   intro: string
   scenario: string
   tags: string[]
+  executionType: CapabilityExecutionType
+  entrypoint: {
+    // 例如 Python 路径或 HTTP 端点
+    target: string // e.g. "evaluators.t2i_adapter:T2IEvaluator" 或 "https://eval-gateway.internal/v1/i2v/score"
+    handlerMethod?: string // e.g. "evaluate_single"
+    envRequired?: string[]
+    timeoutSec: number
+    adapterCode?: string // 真实 Python 适配器示例代码
+  }
   inputSchema: CapabilityInputField[]
   outputSchema: {
     metrics: CapabilityOutputMetric[]
     hasEvidenceChain: boolean
     hasArtifactOutput: boolean
   }
-  executionConfig: {
-    defaultJudgeModel: string
-    supportedModels: string[]
-    protocol: 'llm_judge' | 'multi_modal_api' | 'script' | 'vlm_inspector'
-    timeoutSec: number
-    samplePipeline: string[]
+  sampleInputs?: Record<string, string>
+  sampleOutput?: {
+    latencyMs: number
+    metrics: Record<string, number | boolean | string>
+    evidence: string
+    details?: Record<string, unknown>
   }
   supportedDimensions: DimensionTemplate[]
   isCustom?: boolean
 }
 
-// 预置已注册能力库（支持文生图、图生视频等通用评测能力）
 export const seedCapabilities: RegisteredCapability[] = [
   {
     id: 'cap_t2i',
@@ -71,16 +82,41 @@ export const seedCapabilities: RegisteredCapability[] = [
     name: '文生图评价 (Text-to-Image)',
     category: 'multimodal_gen',
     version: 'v2.1.0',
+    status: 'published',
     author: '多模态组 · 陈晓',
     updatedAt: '2026-11-14',
     intro: '通用文生图综合质量与指令对齐度评测能力，支持提示词遵从度、视觉美感度、图文一致性、角色/风格一致性多维判定。',
     scenario: '文生图模型回归、营销物料生成质检、LoRA 风格适配评测、生图 Agent 产出核验。',
     tags: ['多模态', '文生图', '视觉评测', 'VLM 裁判'],
+    executionType: 'vlm_judge',
+    entrypoint: {
+      target: 'evaluators.multimodal.t2i_vlm:VLMImageEvaluator',
+      handlerMethod: 'evaluate_sample',
+      timeoutSec: 45,
+      adapterCode: `class VLMImageEvaluator:
+    def __init__(self, model="google/gemini-2.5-flash"):
+        self.client = init_vlm_client(model)
+
+    def evaluate_sample(self, payload: dict) -> dict:
+        prompt = payload.get("prompt")
+        image_url = payload.get("generated_image")
+        ref_url = payload.get("reference_image")
+        
+        # 1. 结构化视觉分析
+        v_features = self.client.extract_features(image_url)
+        # 2. 提示词实体对齐打分
+        alignment = self.client.score_alignment(prompt, v_features)
+        return {
+            "prompt_alignment": alignment.score,
+            "visual_quality": v_features.aesthetic_score,
+            "evidence": alignment.reason
+        }`,
+    },
     inputSchema: [
-      { name: 'prompt', label: '正向提示词 (Prompt)', type: 'text', required: true, description: '生图输入的主要正向提示词文本', defaultMapping: 'user_query', placeholder: 'e.g. A cyberpunk cat wearing neon goggles in futuristic Shanghai' },
-      { name: 'negative_prompt', label: '负向提示词 (Negative Prompt)', type: 'text', required: false, description: '排除的负向词', defaultMapping: 'negative_prompt', placeholder: 'e.g. blurry, low quality, deformed hands' },
-      { name: 'generated_image', label: '生成图片 (Generated Image)', type: 'image', required: true, description: '模型输出的目标图片 URL 或 Base64', defaultMapping: 'agent_reply_image', placeholder: 'https://...' },
-      { name: 'reference_image', label: '参考图 / 角色垫图 (Reference Image)', type: 'image', required: false, description: '角色一致性或风格迁移的参考源图', defaultMapping: 'ref_image_url', placeholder: 'https://...' },
+      { name: 'prompt', label: '正向提示词 (Prompt)', type: 'text', required: true, description: '生图输入的主要正向提示词文本', defaultMapping: 'user_query', placeholder: 'A cyberpunk cat wearing neon goggles in futuristic Shanghai' },
+      { name: 'negative_prompt', label: '负向提示词 (Negative Prompt)', type: 'text', required: false, description: '排除的负向词', defaultMapping: 'negative_prompt', placeholder: 'blurry, low quality, deformed hands' },
+      { name: 'generated_image', label: '生成图片 (Generated Image)', type: 'image', required: true, description: '模型输出的目标图片 URL 或 Base64', defaultMapping: 'agent_reply_image', placeholder: 'https://images.example.com/gen_01.png' },
+      { name: 'reference_image', label: '参考图 / 角色垫图 (Reference Image)', type: 'image', required: false, description: '角色一致性或风格迁移的参考源图', defaultMapping: 'ref_image_url', placeholder: 'https://images.example.com/ref_char.png' },
       { name: 'generation_params', label: '生成元参数 (Gen Params)', type: 'json', required: false, description: '种子、CFG Scale、步数等参数字典', defaultMapping: 'extra.gen_params' },
     ],
     outputSchema: {
@@ -93,12 +129,20 @@ export const seedCapabilities: RegisteredCapability[] = [
       hasEvidenceChain: true,
       hasArtifactOutput: true,
     },
-    executionConfig: {
-      defaultJudgeModel: 'google/gemini-2.5-flash',
-      supportedModels: ['google/gemini-2.5-flash', 'openai/gpt-5', 'anthropic/claude-sonnet-4.5', 'qwen/qwen-2.5-vl-72b'],
-      protocol: 'vlm_inspector',
-      timeoutSec: 45,
-      samplePipeline: ['图片加载与格式校验', 'VLM 视觉特征提取', '提示词实体拆解与细粒度对齐检测', '评分 Prompt 构建与裁判调用', '结构化证据与分数提取'],
+    sampleInputs: {
+      prompt: 'A cyberpunk cat wearing neon goggles standing on rain-soaked Tokyo street at night, cinematic lighting, 8k',
+      generated_image: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60',
+      negative_prompt: 'blurry, low quality',
+    },
+    sampleOutput: {
+      latencyMs: 1420,
+      metrics: {
+        prompt_alignment: 4.8,
+        visual_quality: 4.6,
+        ref_consistency: 4.5,
+        safe_check: true,
+      },
+      evidence: '画面精准呈现霓虹护目镜赛博朋克猫，雨夜倒影清晰，光影质感优异，无肢体变形。',
     },
     supportedDimensions: [
       {
@@ -106,8 +150,8 @@ export const seedCapabilities: RegisteredCapability[] = [
         name: '文图对齐与元素遵从',
         defaultScoreType: 'scale_5',
         description: '评估生成的图像是否完整体现提示词中描述的主体、动作、修饰词及空间关系',
-        suggestedPrompt: '请扮演专业视觉评测员。仔细比对用户 Prompt 与生成的图片：\n1. 检查 Prompt 中的核心实体是否存在\n2. 检查属性修饰（颜色、数量、材质）是否准确\n3. 检查空间关系（如左边、背景、手持）是否符合描述\n给出 1~5 分评分并输出详细分析理由。',
-        defaultRubric: '5分: 完美对齐所有实体及细节修饰；4分: 核心实体完整，存在极微小次要修饰偏差；3分: 主体存在但存在明显修饰错误；2分: 严重缺少核心实体；1分: 完全无关。',
+        suggestedPrompt: '仔细比对用户 Prompt 与生成的图片：检查核心实体、属性修饰（颜色、数量）及空间关系，给出 1~5 分。',
+        defaultRubric: '5分: 完美对齐所有实体；4分: 核心实体完整仅微小修饰偏差；3分: 明显偏差；1-2分: 严重不符。',
         requiredInputs: ['prompt', 'generated_image'],
       },
       {
@@ -115,8 +159,8 @@ export const seedCapabilities: RegisteredCapability[] = [
         name: '画质与视觉美感',
         defaultScoreType: 'scale_5',
         description: '评估图像清晰度、构图、光影表现力，以及是否存在肢体畸变、伪影或结构崩塌',
-        suggestedPrompt: '请检验该图片的视觉质量：重点观察人体肢体（如手指、五官）、光影连贯性、纹理清晰度及有无明显伪影噪点。',
-        defaultRubric: '5分: 超高清无瑕疵，构图优美光影自然；4分: 画质清晰，仅放大后有轻微小伪影；3分: 存在局部轻微变形（如手部微瑕）；2分: 严重畸变或模糊；1分: 结构完全崩塌。',
+        suggestedPrompt: '检验图片视觉质量：重点观察人体肢体、光影连贯性、纹理清晰度及有无明显伪影噪点。',
+        defaultRubric: '5分: 超高清无瑕疵；4分: 画质清晰极微小噪点；3分: 局部轻微变形；1-2分: 严重畸变。',
         requiredInputs: ['generated_image'],
       },
       {
@@ -124,8 +168,8 @@ export const seedCapabilities: RegisteredCapability[] = [
         name: '角色/参考图一致性',
         defaultScoreType: 'scale_5',
         description: '在提供参考图场景下，比对生成图与参考图的角色人脸五官、发型、服装或关键资产的一致度',
-        suggestedPrompt: '请对比参考图（Reference Image）与生成图（Generated Image）中的关键主体，评判角色 ID 与核心特征的保留程度。',
-        defaultRubric: '5分: 角色特征完全一致；4分: 识别为同一角色但存在微小发型或光影变化；3分: 相似度一般；2分: 明显不是同一主体；1分: 完全无关联。',
+        suggestedPrompt: '对比参考图与生成图中的关键主体，评判角色 ID 与核心特征的保留程度。',
+        defaultRubric: '5分: 角色特征完全一致；4分: 微小发型光影变化；3分: 相似度一般；1-2分: 明显不是同一主体。',
         requiredInputs: ['reference_image', 'generated_image'],
       },
     ],
@@ -133,18 +177,32 @@ export const seedCapabilities: RegisteredCapability[] = [
   {
     id: 'cap_i2v',
     code: 'eval.i2v.temporal',
-    name: '图生视频评价 (Image-to-Video)',
+    name: '图生视频时序评价 (Image-to-Video)',
     category: 'multimodal_gen',
     version: 'v1.4.0',
+    status: 'published',
     author: '视频智能组 · 赵星',
     updatedAt: '2026-11-15',
     intro: '图生视频与文生视频时空连续性评测能力，涵盖首帧保真度、动态运动合理性、镜头运镜符合度及时间序列无闪烁度。',
     scenario: '视频大模型预训练/微调回归、短视频生成 Agent 自动化评测、运镜控制能力验收。',
     tags: ['多模态', '图生视频', '时序评测', '动态连贯性'],
+    executionType: 'http_api',
+    entrypoint: {
+      target: 'https://video-eval-service.internal/v1/temporal_audit',
+      timeoutSec: 90,
+      adapterCode: `# HTTP Payload Contract:
+# POST https://video-eval-service.internal/v1/temporal_audit
+# Headers: { "Content-Type": "application/json" }
+# Body: {
+#   "first_frame_url": "https://...",
+#   "video_url": "https://...",
+#   "motion_prompt": "Camera zooms in smoothly"
+# }`,
+    },
     inputSchema: [
       { name: 'first_frame', label: '首帧起始图 (First Frame Image)', type: 'image', required: true, description: '作为视频起点的关键帧图片', defaultMapping: 'start_frame_url', placeholder: 'https://...' },
       { name: 'video_clip', label: '生成视频 (Generated Video URL/Path)', type: 'video', required: true, description: '生成的视频文件 URL (mp4/webm)', defaultMapping: 'agent_reply_video', placeholder: 'https://...' },
-      { name: 'motion_prompt', label: '运镜与动作要求 (Motion Prompt)', type: 'text', required: false, description: '对镜头运动（推拉摇移）和主体动态的文字要求', defaultMapping: 'user_motion_query', placeholder: 'e.g. Camera slowly zooms in, person turns head and smiles gently' },
+      { name: 'motion_prompt', label: '运镜与动作要求 (Motion Prompt)', type: 'text', required: false, description: '对镜头运动（推拉摇移）和主体动态的文字要求', defaultMapping: 'user_motion_query', placeholder: 'Camera slowly zooms in, person turns head and smiles gently' },
       { name: 'target_duration', label: '目标时长(秒)', type: 'number', required: false, description: '期望的视频生成秒数', defaultMapping: 'target_duration_sec', placeholder: '4.0' },
     ],
     outputSchema: {
@@ -157,12 +215,20 @@ export const seedCapabilities: RegisteredCapability[] = [
       hasEvidenceChain: true,
       hasArtifactOutput: true,
     },
-    executionConfig: {
-      defaultJudgeModel: 'google/gemini-2.5-flash',
-      supportedModels: ['google/gemini-2.5-flash', 'openai/gpt-5', 'anthropic/claude-sonnet-4.5'],
-      protocol: 'multi_modal_api',
-      timeoutSec: 90,
-      samplePipeline: ['视频抽帧 (1fps / 4fps)', '首帧与起始帧 SSIM/CLIP 距离比对', '光流运动场计算与物理平滑性分析', '多帧序列交由多模态裁判评估运镜与闪烁', '汇总时空评测报告与分值'],
+    sampleInputs: {
+      first_frame: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800',
+      video_clip: 'https://assets.mixkit.co/videos/preview/mixkit-portrait-of-a-fashion-woman-39879-large.mp4',
+      motion_prompt: 'Slow pan and gentle hair breeze',
+    },
+    sampleOutput: {
+      latencyMs: 3850,
+      metrics: {
+        first_frame_fidelity: 4.9,
+        motion_naturalness: 4.4,
+        camera_control: 4.7,
+        temporal_consistency: 4.6,
+      },
+      evidence: '前0.5s完全贴合输入首帧，运镜平稳，光流连续无突兀帧跳变。',
     },
     supportedDimensions: [
       {
@@ -170,8 +236,8 @@ export const seedCapabilities: RegisteredCapability[] = [
         name: '首帧启动保真度',
         defaultScoreType: 'scale_5',
         description: '视频起始画面与输入的第一帧图片在构图、颜色、主体细节上的忠实还原度',
-        suggestedPrompt: '比对首帧图（First Frame）与视频的前 0.5 秒画面，评估视频是否平滑承接首帧且未发生瞬间形变突变。',
-        defaultRubric: '5分: 完美无缝衔接首帧；4分: 存在极轻微亮度色彩抖动但主体不变；3分: 发生轻微主体位移；2分: 首帧突变失真；1分: 与首帧完全不同。',
+        suggestedPrompt: '比对首帧图与视频前 0.5 秒画面，评估视频是否平滑承接首帧且未发生瞬间形变突变。',
+        defaultRubric: '5分: 完美无缝衔接首帧；4分: 极轻微亮度抖动；3分: 轻微主体位移；1-2分: 首帧突变失真。',
         requiredInputs: ['first_frame', 'video_clip'],
       },
       {
@@ -179,24 +245,83 @@ export const seedCapabilities: RegisteredCapability[] = [
         name: '动作流畅度与时序连续性',
         defaultScoreType: 'scale_5',
         description: '评估整段视频中主体的运动是否自然、是否存在时序闪烁（Flickering）、形体异变或物理违背',
-        suggestedPrompt: '观察整段视频的动态表现，检查物体在移动过程中是否发生肢体融化、多肢、画面撕裂闪烁或违背重力等反常识物理现象。',
-        defaultRubric: '5分: 极度丝滑自然，完全符合真实物理；4分: 动作自然，存在极轻微边缘闪烁；3分: 存在中等程度伪影或卡顿；2分: 严重形体融化畸变；1分: 无法辨识的混乱画面。',
+        suggestedPrompt: '观察整段视频动态表现，检查物体移动是否发生肢体融化、撕裂闪烁或违背重力等现象。',
+        defaultRubric: '5分: 丝滑自然符合真实物理；4分: 存在极轻微边缘闪烁；3分: 中等伪影；1-2分: 严重形体融化。',
         requiredInputs: ['video_clip'],
       },
+    ],
+  },
+  {
+    id: 'cap_code_ast',
+    code: 'eval.code.ast_compliance',
+    name: '代码 AST 规范与安全校验 (Python/TS)',
+    category: 'custom',
+    version: 'v1.1.0',
+    status: 'published',
+    author: '工程效能组 · 张涛',
+    updatedAt: '2026-11-16',
+    intro: '基于 AST 静态抽象语法树分析与正则规则库，自动化校验 Agent 生成的代码片段结构合规性、语法死锁与敏感系统调用拦截。',
+    scenario: '代码生成 Agent、Skill-Agent 结构校验、安全沙箱执行前置拦截。',
+    tags: ['代码评测', '静态分析', 'AST 校验', '确定性脚本'],
+    executionType: 'python_adapter',
+    entrypoint: {
+      target: 'evaluators.code.ast_guard:ASTSecurityInspector',
+      handlerMethod: 'inspect_source_code',
+      timeoutSec: 10,
+      adapterCode: `import ast
+
+class ASTSecurityInspector:
+    def inspect_source_code(self, payload: dict) -> dict:
+        code_str = payload.get("source_code", "")
+        try:
+            tree = ast.parse(code_str)
+            has_forbidden = any(isinstance(n, ast.Import) and 'os' in [a.name for a in n.names] for n in ast.walk(tree))
+            return {
+                "syntax_valid": True,
+                "forbidden_calls": has_forbidden,
+                "ast_score": 1.0 if not has_forbidden else 0.0,
+                "evidence": "AST 语法树解析通过，无未授权系统调用。" if not has_forbidden else "检测到违规系统模块导入！"
+            }
+        except SyntaxError as e:
+            return {"syntax_valid": False, "forbidden_calls": False, "ast_score": 0.0, "evidence": str(e)}`,
+    },
+    inputSchema: [
+      { name: 'source_code', label: '待测源代码 (Source Code)', type: 'text', required: true, description: 'Agent 产出的目标代码或 Markdown 文件', defaultMapping: 'workspace_after', placeholder: 'def main(): ...' },
+      { name: 'rules_config', label: '合规规则配置 (Rules JSON)', type: 'json', required: false, description: '自定义语法检查规则与禁止函数列表', defaultMapping: 'rules_config' },
+    ],
+    outputSchema: {
+      metrics: [
+        { key: 'syntax_valid', name: '语法合规通过', type: 'boolean', description: '代码是否能正常编译成 AST' },
+        { key: 'ast_score', name: '静态合规得分', type: 'score', range: [0, 1], description: '二元合规通过率' },
+      ],
+      hasEvidenceChain: true,
+      hasArtifactOutput: false,
+    },
+    sampleInputs: {
+      source_code: '# SKILL.md Content\ndef get_skill_version():\n    return "1.0.0"\n',
+    },
+    sampleOutput: {
+      latencyMs: 85,
+      metrics: {
+        syntax_valid: true,
+        ast_score: 1.0,
+      },
+      evidence: 'AST 语法树解析通过，代码块反引号闭合，未检测到危险指令。',
+    },
+    supportedDimensions: [
       {
-        key: 'i2v.camera_panning',
-        name: '运镜与指令遵从',
-        defaultScoreType: 'scale_5',
-        description: '检验视频画面的镜头推拉摇移（Pan/Tilt/Zoom）是否符合 Motion Prompt 中的指令约定',
-        suggestedPrompt: '根据输入的运镜描述（Motion Prompt），检查视频中的相机视角变化方向、运动节奏与主体焦点是否完全达标。',
-        defaultRubric: '5分: 精确执行指定运镜轨迹；4分: 运镜方向正确但幅度略有偏差；3分: 运镜动作微弱或不明确；2分: 运镜方向完全相反；1分: 完全静止或剧烈抖动。',
-        requiredInputs: ['motion_prompt', 'video_clip'],
+        key: 'code.syntax',
+        name: '代码语法与结构合规',
+        defaultScoreType: 'binary',
+        description: '确保代码无语法错误且满足平台结构要求',
+        suggestedPrompt: '静态检查源代码是否符合规范。',
+        defaultRubric: '1分: 语法正确且结构完整；0分: 语法错误或结构破坏。',
+        requiredInputs: ['source_code'],
       },
     ],
   },
 ]
 
-// 扩展后的评分器评分规则类型
 export type ScorerRubricType = 'binary' | 'scale_5' | 'scale_100' | 'custom_options'
 
 export type RubricOption = {
@@ -211,8 +336,8 @@ export type ScorerCapabilityBinding = {
   capabilityId: string
   capabilityCode: string
   capabilityVersion: string
-  selectedDimensions: string[] // 选择绑定的能力维度 key
-  fieldMappings: Record<string, string> // capability input name -> dataset/dict field name
+  selectedDimensions: string[]
+  fieldMappings: Record<string, { source: 'field' | 'text' | 'file'; value: string }>
   rubrics: Record<string, {
     scoreType: ScorerRubricType
     customOptions?: RubricOption[]
@@ -235,7 +360,7 @@ export function useCapabilityRegistry() {
           next[idx] = cap
           return next
         }
-        return [...prev, cap]
+        return [cap, ...prev]
       })
     },
     [setCaps],

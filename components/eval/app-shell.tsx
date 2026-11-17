@@ -53,7 +53,7 @@ function ScopeSwitcher() {
 const nav = [
   { group: 'L0 平台', items: [
     { href: '/lines', label: '产线管理', icon: Building2 },
-    { href: '/capabilities', label: '其他评测能力', icon: Cpu },
+    { href: '/capabilities', label: '评测能力注册', icon: Cpu },
   ] },
   { group: 'L1 资产', items: [
     { href: '/datasets', label: '数据集 / Case', icon: Database },

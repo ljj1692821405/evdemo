@@ -156,12 +156,12 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
         <div className="flex items-center gap-2">
           <Btn variant="primary" size="sm" onClick={() => setImportModalOpen(true)}>
             <Download className="size-3.5" />
-            导入评测能力
+            导入评测能力生成评分器
           </Btn>
           <a href="/capabilities">
             <Btn variant="outline" size="sm">
               <Cpu className="size-3.5" />
-              能力库
+              评测能力注册库
             </Btn>
           </a>
         </div>
