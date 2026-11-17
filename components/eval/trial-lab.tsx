@@ -5,7 +5,7 @@ import {
   ArrowLeft, Play, Loader2, Search, Check, X, Equal, CircleSlash, Upload, Pencil, Gavel, Clock, Coins, ArrowDownUp, History, Camera, UserRound, Braces,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { dimensions, snapshots, type Scorer } from '@/lib/mock-data'
+import { dimensions, experiments, snapshots, type Scorer } from '@/lib/mock-data'
 import { resolveEntry, useFieldDict } from '@/lib/field-dict-store'
 import { fieldValues, runTrial, trialUnits, type TrialResult } from '@/lib/trial-data'
 import { judgeSections, type JudgeTool } from '@/lib/judge-prompt'
@@ -25,7 +25,7 @@ type Props = {
 }
 
 export function TrialLab({ scorer, template, background, agentBackground, tools, onClose, onChange, onPublish, onPassed }: Props) {
-  const [snapId, setSnapId] = useState(snapshots[0].id)
+  const [snapId, setSnapId] = useState(() => experiments.find((e) => e.scorerIds.includes(scorer.id))?.snapshotId ?? snapshots[0].id)
   const units = useMemo(() => trialUnits(snapId), [snapId])
   const [sel, setSel] = useState(units[0]?.key)
   const [q, setQ] = useState('')

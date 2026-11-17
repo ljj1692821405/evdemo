@@ -9,6 +9,7 @@ import { resolveConfig, snapshotForExp, toFrozen, type FrozenSnapshot } from '@/
 import { FrozenSnapshotCard } from './capability-snapshot'
 import { cn } from '@/lib/utils'
 import { useFieldDict } from '@/lib/field-dict-store'
+import { useDatasets } from '@/lib/dataset-store'
 import { experiments as initialExps, runs as initialRuns, scorers, snapshots, dimensions, type Experiment, type Run, type RunStatus } from '@/lib/mock-data'
 import { Panel, Tag, Mono, Th, Td, Btn, Progress } from './primitives'
 
@@ -24,6 +25,7 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
   const { version: fieldDictVersion } = useFieldDict()
   const { agent } = useScope()
   const caps = useCapabilities()
+  const { datasets } = useDatasets()
   const [createdSnaps, setCreatedSnaps] = useState<Record<string, FrozenSnapshot>>({})
   const [exps, setExps] = useState<Experiment[]>(initialExps)
   const [runList, setRunList] = useState<Run[]>(initialRuns)
@@ -108,7 +110,7 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
 
       {creating ? (
         <Panel title="新建实验">
-          <div className="flex max-w-xl flex-col gap-4">
+          <div className="flex max-w-3xl flex-col gap-4">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               名称
               <input
@@ -119,20 +121,42 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
               />
             </label>
             <fieldset>
-              <legend className="mb-1.5 text-xs text-muted-foreground">快照（只读来源）</legend>
-              <div className="flex flex-wrap gap-2">
-                {snapshots.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    aria-pressed={draft.snapshotId === s.id}
-                    onClick={() => setDraft({ ...draft, snapshotId: s.id })}
-                    className={cn('flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs', draft.snapshotId === s.id ? 'border-primary bg-accent' : 'bg-card hover:bg-muted')}
-                  >
-                    <Snowflake className="size-3 text-primary" aria-hidden="true" /><Mono>{s.id}</Mono>
-                    <span className="text-muted-foreground">{s.turns} turn</span>
-                  </button>
-                ))}
+              <legend className="mb-1.5 text-xs text-muted-foreground">快照</legend>
+              <div className="overflow-hidden rounded-md border">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/40">
+                    <tr>
+                      <Th className="w-10"><span className="sr-only">选择</span></Th>
+                      <Th>快照 ID</Th>
+                      <Th>数据集</Th>
+                      <Th>备注</Th>
+                      <Th className="text-right">case 数</Th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {snapshots.map((s) => {
+                      const on = draft.snapshotId === s.id
+                      return (
+                        <tr key={s.id} className={cn('cursor-pointer', on ? 'bg-accent/60' : 'hover:bg-muted/40')} onClick={() => setDraft({ ...draft, snapshotId: s.id })}>
+                          <Td>
+                            <input
+                              type="radio"
+                              name="snapshot"
+                              aria-label={`选择 ${s.id}`}
+                              checked={on}
+                              onChange={() => setDraft({ ...draft, snapshotId: s.id })}
+                              className="accent-primary"
+                            />
+                          </Td>
+                          <Td><Mono className="whitespace-nowrap font-semibold">{s.id}</Mono></Td>
+                          <Td>{datasets.find((d) => d.id === s.datasetId)?.name ?? <span className="text-muted-foreground">已删除</span>}</Td>
+                          <Td className="text-muted-foreground">{s.note || '—'}</Td>
+                          <Td className="text-right"><Mono>{s.cases}</Mono></Td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
             </fieldset>
             <fieldset>

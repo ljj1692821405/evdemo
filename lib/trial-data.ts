@@ -1,4 +1,4 @@
-import { demoData, dimKeyOf, turnFieldValues } from './demo-data'
+import { demoData, turnFieldValues, turnScores } from './demo-data'
 import { goldenCases } from './golden-seed'
 import { snapshots, type Scorer, type Verdict } from './mock-data'
 
@@ -75,9 +75,9 @@ export function runTrial(scorer: Scorer, u: TrialUnit, template: string, refs: s
 
   const dims: DimResult[] = scorer.outputs.map((key) => {
     if (unbound.length) return { key, verdict: 'error', gt: null, evidence: [], reason: `变量未绑定：${unbound.join(', ')}` }
-    const entry = found ? Object.entries(found.t.scores).find(([k]) => dimKeyOf(k) === key) : undefined
-    if (!entry) return { key, verdict: 'na', gt: null, evidence: [], reason: '该 case 未激活此维度' }
-    const score = entry[1]
+    const scores = found ? turnScores(found.t) : {}
+    if (!(key in scores)) return { key, verdict: 'na', gt: null, evidence: [], reason: '该 case 未激活此维度' }
+    const score = scores[key]
     if (!score) return { key, verdict: 'na', gt: null, evidence: [], reason: found?.t.skipReason || '本轮无 GT，不评' }
     return {
       key,

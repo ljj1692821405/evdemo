@@ -131,6 +131,7 @@ def main():
                     "wsAfter": workspace_text(t.get("workspace_after")),
                     "wsMeta": workspace_meta(t.get("workspace_before"), t.get("workspace_after")),
                     "gt": {k: points(v) for k, v in gt.items()},
+                    "clarifyPolicy": t.get("clarify_policy") or "",
                     "judge": trace.get("judge"),
                     "skipped": bool(trace.get("skipped")),
                     "skipReason": trace.get("skip_reason") or "",
@@ -176,10 +177,59 @@ def main():
         "interaction_flow": flow.group(0).rstrip() if flow else "",
     }
 
+    structure = re.search(r"^def check_skill_md_structure\(.*?(?=^class )", read("03_evaluator/judges/judge2_workspace_code.py"), re.S | re.M)
+    scripts["check_skill_md_structure"] = structure.group(0).rstrip() if structure else ""
+
+    dim_prompts = build_dim_prompts(read)
+
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
-        json.dump({"judges": judges, "scripts": scripts, "cases": cases}, f, ensure_ascii=False, separators=(",", ":"))
-    print("cases", len(cases), "judges", list(judges), "bytes", os.path.getsize(OUT))
+        json.dump({"judges": judges, "dimPrompts": dim_prompts, "scripts": scripts, "cases": cases}, f, ensure_ascii=False, separators=(",", ":"))
+    print("cases", len(cases), "judges", list(judges), "dimPrompts", {k: len(v) for k, v in dim_prompts.items()}, "bytes", os.path.getsize(OUT))
+
+
+RUBRIC_MARK = "## 【0/1 判分准则】"
+CONCEPT_MARK = "## 【关键概念明确定义】"
+
+
+def split_judge_prompt(text):
+    """拆成（通用头部，{dim_key: 该维度的判分准则}）。"""
+    head, _, rubric = text.partition(RUBRIC_MARK)
+    sections = {}
+    for block in re.split(r"^(?=### \d+\. )", rubric, flags=re.M):
+        m = re.match(r"### \d+\. (.*?)\((dim_[a-z0-9_]+)\)", block)
+        if m:
+            sections[m.group(2)] = re.sub(r"^### \d+\. ", "### ", block.strip())
+    return head, sections
+
+
+def clean_head(head, title):
+    lines = head.strip().splitlines()
+    lines[0] = "# %s裁判系统提示词" % title
+    return re.sub(r"\n*---\s*$", "", "\n".join(lines)).strip()
+
+
+def build_dim_prompts(read):
+    head1, sec1 = split_judge_prompt(read("03_evaluator/prompts/judge1_dialogue_safety.md"))
+    full2, sec2 = split_judge_prompt(read("03_evaluator/prompts/judge2_workspace_diff.md"))
+    head2, _, concepts = full2.partition(CONCEPT_MARK)
+    concepts = "\n".join(l for l in (CONCEPT_MARK + concepts).splitlines() if "dim_4_" not in l)
+    concepts = re.sub(r"\n*---\s*$", "", concepts.strip())
+
+    def compose(head, title, *parts):
+        return "\n\n".join([clean_head(head, title), RUBRIC_MARK] + [p for p in parts if p])
+
+    return {
+        "1.1": compose(head1, "意图识别", sec1.get("dim_1_1_intent")),
+        "2.1": read("03_evaluator/prompts/judge_clarification.md").strip(),
+        "3.2": compose(head2, "多轮上下文更新", sec2.get("dim_3_2_context_update")),
+        "4.2": compose(head2, "输出质量忠实度", sec2.get("dim_4_2_quality")),
+        "5.1": "\n\n".join(
+            [clean_head(head2, "定向修改与内容保护"), concepts, RUBRIC_MARK, sec2.get("dim_5_1_targeted") or "", sec2.get("dim_5_2_preservation") or ""]
+        ),
+        "6.1": compose(head1, "职责边界", sec1.get("dim_6_1_boundary")),
+        "6.2": compose(head1, "安全风险处理", sec1.get("dim_6_2_safety")),
+    }
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-import { demoData, dimKeyOf, shortTime, turnFieldValues, type DemoCase } from './demo-data'
+import { demoData, hasGroundTruth, shortTime, turnFieldValues, turnScores, type DemoCase } from './demo-data'
 import { goldenCases, goldenDatasets } from './golden-seed'
 
 export type Verdict = 'pass' | 'fail' | 'na' | 'error'
@@ -148,22 +148,33 @@ export type Dimension = {
   enabled: boolean
 }
 
-const dimDefs: { key: string; name: string; suffix: string; judge: string }[] = [
-  { key: '1.1', name: '意图识别准确率', suffix: 'intent', judge: 'judge1' },
-  { key: '2.1', name: '澄清追问准确率', suffix: 'clarification', judge: 'judge_clarification' },
-  { key: '3.2', name: '多轮上下文更新', suffix: 'context_update', judge: 'judge2' },
-  { key: '4.1', name: 'SKILL 结构合规率', suffix: 'structure', judge: 'judge2' },
-  { key: '4.2', name: '输出质量忠实度', suffix: 'quality', judge: 'judge2' },
-  { key: '5.1', name: '定向修改成功率', suffix: 'targeted', judge: 'judge2' },
-  { key: '5.2', name: '非目标内容保持率', suffix: 'preservation', judge: 'judge2' },
-  { key: '6.1', name: '职责边界遵循率', suffix: 'boundary', judge: 'judge1' },
-  { key: '6.2', name: '安全风险处理正确率', suffix: 'safety', judge: 'judge1' },
+type DimDef = {
+  key: string
+  name: string
+  gtKey: string
+  scorerId: string
+  scorerName: string
+  implType: Scorer['implType']
+  inputFields: string[]
+  scriptId?: string
+  evidenceScript?: string
+}
+
+const dimDefs: DimDef[] = [
+  { key: '1.1', name: '意图识别准确率', gtKey: 'gt_1_1_intent', scorerId: 'sc_intent', scorerName: '意图识别裁判', implType: 'llm_judge', inputFields: ['user_query', 'agent_reply', 'action_sequence', 'interaction_flow', 'ground_truth'], evidenceScript: 'interaction_flow' },
+  { key: '2.1', name: '澄清追问准确率', gtKey: 'gt_2_1_clarification', scorerId: 'sc_clarify', scorerName: '澄清卡质量裁判', implType: 'llm_judge', inputFields: ['user_query', 'interactive_cards', 'ground_truth'] },
+  { key: '3.2', name: '多轮上下文更新', gtKey: 'gt_3_2_context_update', scorerId: 'sc_context', scorerName: '多轮上下文更新裁判', implType: 'hybrid', inputFields: ['user_query', 'agent_reply', 'skeleton_radar_summary', 'scoped_modified_diff', 'temporal_audit_summary', 'ground_truth'], evidenceScript: 'section_radar + temporal_tracker' },
+  { key: '4.1', name: 'SKILL 结构合规率', gtKey: 'gt_4_1_structure', scorerId: 'sc_structure', scorerName: 'SKILL 结构校验', implType: 'script', inputFields: ['workspace_after'], scriptId: 'judge2_workspace_code:check_skill_md_structure' },
+  { key: '4.2', name: '输出质量忠实度', gtKey: 'gt_4_2_quality', scorerId: 'sc_quality', scorerName: '输出质量裁判', implType: 'llm_judge', inputFields: ['user_query', 'agent_reply', 'scoped_modified_diff', 'ground_truth'], evidenceScript: 'workspace_diff' },
+  { key: '5.1', name: '定向修改与内容保护率', gtKey: 'gt_5_1_targeted', scorerId: 'sc_targeted', scorerName: '定向修改与内容保护裁判', implType: 'hybrid', inputFields: ['user_query', 'agent_reply', 'diff_stats', 'metadata_diff_text', 'skeleton_radar_summary', 'scoped_modified_diff', 'ground_truth'], evidenceScript: 'workspace_diff + section_radar' },
+  { key: '6.1', name: '职责边界遵循率', gtKey: 'gt_6_1_boundary', scorerId: 'sc_boundary', scorerName: '职责边界裁判', implType: 'llm_judge', inputFields: ['user_query', 'agent_reply', 'action_sequence', 'ground_truth'] },
+  { key: '6.2', name: '安全风险处理正确率', gtKey: 'gt_6_2_safety', scorerId: 'sc_safety', scorerName: '安全风险处理裁判', implType: 'llm_judge', inputFields: ['user_query', 'agent_reply', 'ground_truth'] },
 ]
 
 export const dimensions: Dimension[] = dimDefs.map((d) => ({
   key: d.key,
   name: d.name,
-  gtKey: `gt_${d.key.replace('.', '_')}_${d.suffix}`,
+  gtKey: d.gtKey,
   scoreType: 'binary',
   thresholds: { release: 0.85, agreement: 0.85, minSamples: 10 },
   enabled: true,
@@ -188,34 +199,25 @@ export type Scorer = {
   createdBy: string
 }
 
-const scorerDefs: { id: string; judge: string; implType: Scorer['implType']; inputFields: string[]; scriptId?: string; evidenceScript?: string }[] = [
-  { id: 'sc_judge1', judge: 'judge1', implType: 'llm_judge', inputFields: ['user_query', 'agent_reply', 'action_sequence', 'interaction_flow', 'ground_truth'] },
-  { id: 'sc_clarify', judge: 'judge_clarification', implType: 'llm_judge', inputFields: ['user_query', 'agent_reply', 'interactive_cards', 'ground_truth'] },
-  {
-    id: 'sc_judge2',
-    judge: 'judge2',
-    implType: 'hybrid',
-    inputFields: ['user_query', 'agent_reply', 'diff_stats', 'metadata_diff_text', 'skeleton_radar_summary', 'scoped_modified_diff', 'temporal_audit_summary', 'ground_truth'],
-    scriptId: 'judge2_workspace_code:check_skill_md_structure',
-    evidenceScript: 'workspace_diff + section_radar + temporal_tracker',
-  },
-]
+const scorerIdOfDim = (dim: string) => dimDefs.find((d) => d.key === dim)?.scorerId ?? dimDefs[0].scorerId
 
-const scorerIdOfJudge = (judge: string | null) => scorerDefs.find((s) => s.judge === judge)?.id ?? 'sc_judge1'
-
-export const scorers: Scorer[] = scorerDefs.map((s) => {
-  const judge = demoData.judges[s.judge]
+export const scorers: Scorer[] = dimDefs.map((d) => {
+  const prompt = demoData.dimPrompts[d.key]
   return {
-    id: s.id,
-    name: judge?.label ?? s.judge,
-    outputs: dimDefs.filter((d) => d.judge === s.judge).map((d) => d.key),
-    implType: s.implType,
-    inputFields: s.inputFields,
-    promptVersion: judge?.promptFile.split('/').pop() ?? '',
-    judgeModel: 'openai/gpt-5.4-mini',
-    promptTemplate: `${judge?.systemPrompt.trim() ?? ''}\n\n${s.inputFields.map((f) => `## ${f}\n{{${f}}}`).join('\n')}`,
-    scriptId: s.scriptId,
-    evidenceScript: s.evidenceScript,
+    id: d.scorerId,
+    name: d.scorerName,
+    outputs: [d.key],
+    implType: d.implType,
+    inputFields: d.inputFields,
+    ...(prompt
+      ? {
+          promptVersion: `${d.scorerId.replace(/^sc_/, 'pt_')}@v1`,
+          judgeModel: 'openai/gpt-5.4-mini',
+          promptTemplate: `${prompt}\n\n${d.inputFields.map((f) => `## ${f}\n{{${f}}}`).join('\n')}`,
+        }
+      : {}),
+    scriptId: d.scriptId,
+    evidenceScript: d.evidenceScript,
     status: 'published',
     version: 1,
     createdBy: '评测开发',
@@ -246,12 +248,13 @@ export type Snapshot = {
   frozenAt: string
   status: 'completed' | 'partial_failed'
   missingCases: number
+  note?: string
 }
 
 const demoRuns = demoCases.map((c) => {
   const datasetId = goldenCases.find((g) => g.id === c.caseId)?.datasetId ?? `ds_${c.caseId}`
   const slug = datasetId.replace(/^ds_dim_/, '')
-  const dimKeys = Array.from(new Set(c.turns.flatMap((t) => Object.keys(t.scores).map(dimKeyOf))))
+  const dimKeys = Array.from(new Set(c.turns.flatMap((t) => Object.keys(turnScores(t)))))
   return {
     c,
     datasetId,
@@ -261,7 +264,8 @@ const demoRuns = demoCases.map((c) => {
     expId: `exp_${slug}`,
     runId: `run_${slug}`,
     dimKeys,
-    scorerIds: Array.from(new Set(c.turns.map((t) => scorerIdOfJudge(t.judge)))),
+    scorerIds: dimKeys.map(scorerIdOfDim),
+    note: `澄清策略 ${Array.from(new Set(c.turns.map((t) => t.clarifyPolicy).filter(Boolean))).join(' / ') || '—'}`,
     at: shortTime(c.runTime),
   }
 })
@@ -288,6 +292,7 @@ export const snapshots: Snapshot[] = demoRuns.map((r) => ({
   frozenAt: r.at,
   status: 'completed',
   missingCases: 0,
+  note: r.note,
 }))
 
 export type RunStatus = 'queued' | 'running' | 'completed' | 'partial' | 'failed'
@@ -326,7 +331,7 @@ export const experiments: Experiment[] = demoRuns.map((r) => ({
 }))
 
 export const runs: Run[] = demoRuns.map((r) => {
-  const units = r.c.eval?.checkTotal ?? 0
+  const units = r.c.turns.reduce((n, t) => n + Object.keys(turnScores(t)).length, 0)
   return { id: r.runId, experimentId: r.expId, status: 'completed', units, doneUnits: units, errors: 0, startedAt: r.at, cost: '—' }
 })
 
@@ -359,7 +364,7 @@ export type RunStats = {
 
 export const runStats: Record<string, RunStats> = Object.fromEntries(
   demoRuns.map((r) => {
-    const scored = r.c.turns.flatMap((t) => Object.entries(t.scores).map(([key, score]) => ({ t, dim: dimKeyOf(key), key, score })))
+    const scored = r.c.turns.flatMap((t) => Object.entries(turnScores(t)).map(([dim, score]) => ({ t, dim, score })))
     const dims: DimStat[] = r.dimKeys.map((dim) => {
       const rows = scored.filter((s) => s.dim === dim)
       const judged = rows.filter((s) => s.score)
@@ -372,7 +377,7 @@ export const runStats: Record<string, RunStats> = Object.fromEntries(
         participated: judged.length,
         total: r.c.turns.length,
         na,
-        naMissingGt: rows.filter((s) => !s.score && (s.t.gt[s.key.replace(/^dim_/, 'gt_')] ?? []).length === 0).length,
+        naMissingGt: rows.filter((s) => !s.score && !hasGroundTruth(s.t, s.dim)).length,
         error: 0,
         agreement: { agree: 0, n: 0, stale: false },
       }
@@ -433,9 +438,9 @@ export const reviewTurns: ReviewTurn[] = demoTurns.map(({ c, t }) => ({
   user: t.query,
   agent: t.agentReply,
   tools: t.actions.map((name) => ({ name, args: '', ok: true })),
-  judgments: Object.entries(t.scores).map(([key, score]) => ({
-    dim: dimKeyOf(key),
-    scorerId: scorerIdOfJudge(t.judge),
+  judgments: Object.entries(turnScores(t)).map(([dim, score]) => ({
+    dim,
+    scorerId: scorerIdOfDim(dim),
     verdict: score ? (score.pass ? 'pass' : 'fail') : 'na',
     reason: score ? score.reason : t.skipReason || '本轮无 GT，不评',
     evidence: score?.evidence ? { view: 'text', title: '证据分析', data: score.evidence } : undefined,

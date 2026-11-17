@@ -19,6 +19,7 @@ export type DemoTurn = {
   wsMeta: { key: string; before: string; after: string }[]
   gt: Record<string, string[]>
   judge: string | null
+  clarifyPolicy: string
   skipped: boolean
   skipReason: string
   scores: Record<string, DemoScore | null>
@@ -45,14 +46,43 @@ export type DemoJudge = { label: string; promptFile: string; systemPrompt: strin
 
 export const demoData = demo as unknown as {
   judges: Record<string, DemoJudge>
+  dimPrompts: Record<string, string>
   scripts: Record<string, string>
   cases: DemoCase[]
 }
 
+const mergedInto: Record<string, string> = { '5.2': '5.1' }
+const subCheckLabel: Record<string, string> = { dim_5_1_targeted: '定向修改', dim_5_2_preservation: '内容保持' }
+
 export const dimKeyOf = (key: string) => {
   const m = key.match(/^(?:dim|gt)_(\d+)_(\d+)/)
-  return m ? `${m[1]}.${m[2]}` : key
+  if (!m) return key
+  const dim = `${m[1]}.${m[2]}`
+  return mergedInto[dim] ?? dim
 }
+
+export function turnScores(t: DemoTurn): Record<string, DemoScore | null> {
+  const groups = new Map<string, [string, DemoScore | null][]>()
+  for (const entry of Object.entries(t.scores)) {
+    const dim = dimKeyOf(entry[0])
+    groups.set(dim, [...(groups.get(dim) ?? []), entry])
+  }
+  return Object.fromEntries(
+    Array.from(groups, ([dim, entries]) => {
+      const judged = entries.filter((e): e is [string, DemoScore] => e[1] !== null)
+      if (!judged.length) return [dim, null]
+      if (entries.length === 1) return [dim, judged[0][1]]
+      const join = (pick: (s: DemoScore) => string) =>
+        judged
+          .filter(([, s]) => pick(s))
+          .map(([key, s]) => `${subCheckLabel[key] ?? key}：${pick(s)}`)
+          .join('\n')
+      return [dim, { pass: judged.every(([, s]) => s.pass), reason: join((s) => s.reason), evidence: join((s) => s.evidence) }]
+    }),
+  )
+}
+
+export const hasGroundTruth = (t: DemoTurn, dim: string) => Object.entries(t.gt).some(([key, points]) => dimKeyOf(key) === dim && points.length > 0)
 
 export const shortTime = (runTime: string) => runTime.slice(5, 16)
 

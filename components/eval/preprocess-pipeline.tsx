@@ -52,10 +52,10 @@ const outputNode = (name: string): FieldNode => {
 }
 
 const scriptDefs = [
-  { id: 'workspace_diff', inputs: ['workspace_before', 'workspace_after'], outputs: ['diff_stats', 'metadata_diff_text', 'scoped_modified_diff'], consumer: 'sc_judge2@v1' },
-  { id: 'section_radar', inputs: ['workspace_before', 'workspace_after'], outputs: ['skeleton_radar_summary'], consumer: 'sc_judge2@v1' },
-  { id: 'temporal_tracker', inputs: ['workspace_after', 'ground_truth'], outputs: ['temporal_audit_summary'], consumer: 'sc_judge2@v1' },
-  { id: 'interaction_flow', inputs: ['interactive_cards', 'write_confirm', 'file_actions'], outputs: ['interaction_flow'], consumer: 'sc_judge1@v1' },
+  { id: 'workspace_diff', inputs: ['workspace_before', 'workspace_after'], outputs: ['diff_stats', 'metadata_diff_text', 'scoped_modified_diff'], consumers: ['sc_targeted@v1', 'sc_quality@v1', 'sc_context@v1'] },
+  { id: 'section_radar', inputs: ['workspace_before', 'workspace_after'], outputs: ['skeleton_radar_summary'], consumers: ['sc_targeted@v1', 'sc_context@v1'] },
+  { id: 'temporal_tracker', inputs: ['workspace_after', 'ground_truth'], outputs: ['temporal_audit_summary'], consumers: ['sc_context@v1'] },
+  { id: 'interaction_flow', inputs: ['interactive_cards', 'write_confirm', 'file_actions'], outputs: ['interaction_flow'], consumers: ['sc_intent@v1'] },
 ]
 
 const initialScripts: Script[] = scriptDefs.map((d) => ({
@@ -65,7 +65,7 @@ const initialScripts: Script[] = scriptDefs.map((d) => ({
   inputs: d.inputs,
   outputs: d.outputs.map(outputNode),
   code: demoData.scripts[d.id] ?? '',
-  consumers: [d.consumer],
+  consumers: d.consumers,
 }))
 
 const cacheByScript: Record<string, CacheEntry[]> = Object.fromEntries(
@@ -77,7 +77,7 @@ const cacheByScript: Record<string, CacheEntry[]> = Object.fromEntries(
         key: `${x.c.caseId}#${x.t.turn}`,
         status: 'cached' as const,
         at: shortTime(x.c.runTime),
-        by: d.consumer,
+        by: d.consumers[0],
         tok: Math.round(d.outputs.reduce((n, o) => n + (x.values[o]?.length ?? 0), 0) * 1.4),
       })),
   ]),

@@ -239,7 +239,7 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
                         <ScrollText className="size-3.5" aria-hidden="true" />
                         裁判证据
                       </span>
-                      <p className="min-w-0 text-pretty text-[13px] leading-relaxed text-foreground">{j.reason}</p>
+                      <p className="min-w-0 whitespace-pre-line text-pretty text-[13px] leading-relaxed text-foreground">{j.reason}</p>
                     </div>
                     {j.evidence ? <div className="mt-2"><EvidenceView evidence={j.evidence} /></div> : null}
                   </li>
