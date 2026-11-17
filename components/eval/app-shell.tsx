@@ -14,6 +14,7 @@ import {
   Building2,
   Cpu,
   PenTool,
+  Server,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLines, useScope } from '@/lib/tenant-store'
@@ -69,6 +70,9 @@ const nav = [
     { href: '/review', label: '核对看板', icon: Microscope },
     { href: '/annotation', label: '标注工作台', icon: PenTool },
     { href: '/export', label: '报告 / 导出', icon: FileDown },
+  ] },
+  { group: 'L6 模型', items: [
+    { href: '/models', label: '模型服务', icon: Server },
   ] },
 ]
 
