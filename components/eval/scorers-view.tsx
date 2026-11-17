@@ -385,6 +385,19 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
                       })}
                     </ul>
                   </Field>
+                  {s.fixedInputs?.length ? (
+                    <Field label="固定输入">
+                      <ul className="flex flex-col gap-1">
+                        {s.fixedInputs.map((f) => (
+                          <li key={f.name} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5">
+                            <Mono>{f.name}</Mono>
+                            <Tag>{f.kind === 'file' ? '文件' : '文本'}</Tag>
+                            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{f.value}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </Field>
+                  ) : null}
                 </div>
               </div>
 

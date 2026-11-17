@@ -105,6 +105,7 @@ export type Scorer = {
   outputs: string[]
   implType: 'llm_judge' | 'script' | 'hybrid'
   inputFields: string[]
+  fixedInputs?: { name: string; kind: 'text' | 'file'; value: string }[]
   promptVersion?: string
   judgeModel?: string
   promptTemplate?: string
