@@ -78,7 +78,7 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
   const long = turn.agent.length > 240
 
   return (
-    <div className="grid grid-cols-1 gap-4 p-6 xl:grid-cols-[220px_1fr_260px]">
+    <div className="grid grid-cols-1 gap-4 p-6 lg:grid-cols-[220px_minmax(0,1fr)_260px]">
       {/* queue */}
       <nav aria-label="复核队列" className="rounded-lg border bg-card">
         <div className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">队列 · {reviewTurns.length} 轮</div>
@@ -109,15 +109,29 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
 
       {/* card */}
       <article className="min-w-0 rounded-lg border bg-card" aria-label={`${turn.caseId} 第 ${turn.turnNo} 轮`}>
-        <div className="flex items-center justify-between border-b px-4 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
           <div className="flex items-center gap-2">
-            <Mono className="font-semibold">{turn.caseId}</Mono>
+            <Mono className="text-base font-semibold">{turn.caseId}</Mono>
             <Tag>turn {turn.turnNo}/{turn.totalTurns}</Tag>
           </div>
           <div className="flex items-center gap-1">
-            <Btn size="sm" variant="ghost" onClick={() => go(-1)} disabled={idx === 0} aria-label="上一轮"><ChevronLeft className="size-4" /></Btn>
-            <Mono className="text-muted-foreground">{idx + 1}/{reviewTurns.length}</Mono>
-            <Btn size="sm" variant="ghost" onClick={() => go(1)} disabled={idx === reviewTurns.length - 1} aria-label="下一轮"><ChevronRight className="size-4" /></Btn>
+            <button
+              type="button"
+              disabled={idx === 0}
+              onClick={() => go(-1)}
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-input bg-card px-2.5 text-sm font-medium hover:bg-muted disabled:opacity-40"
+            >
+              <ChevronLeft className="size-4" aria-hidden="true" />上一条
+            </button>
+            <Mono className="px-2 text-sm text-muted-foreground">{idx + 1} / {reviewTurns.length}</Mono>
+            <button
+              type="button"
+              disabled={idx === reviewTurns.length - 1}
+              onClick={() => go(1)}
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-input bg-card px-2.5 text-sm font-medium hover:bg-muted disabled:opacity-40"
+            >
+              下一条<ChevronRight className="size-4" aria-hidden="true" />
+            </button>
           </div>
         </div>
 
@@ -268,6 +282,46 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
 
       {/* stats */}
       <aside className="flex flex-col gap-4">
+        <nav aria-label="全部 case 进度" className="rounded-lg border bg-card p-4">
+          <div className="mb-3 flex items-center justify-between text-xs font-medium text-muted-foreground">
+            <span>卡片进度</span>
+            <Mono>{idx + 1} / {reviewTurns.length}</Mono>
+          </div>
+          <ul className="grid grid-cols-5 gap-1.5">
+            {reviewTurns.map((t, i) => {
+              const active = i === idx
+              const done = t.judgments.every((j) => human[key(t.caseId, t.turnNo, j.dim)])
+              const disagree = t.judgments.some((j) => {
+                const h = human[key(t.caseId, t.turnNo, j.dim)]
+                return h && h !== j.verdict
+              })
+              const hasJudgeFail = t.judgments.some((j) => j.verdict === 'fail')
+              return (
+                <li key={`${t.caseId}#${t.turnNo}`}>
+                  <button
+                    type="button"
+                    onClick={() => { setIdx(i); setFocusDim(0); setExpanded(false) }}
+                    aria-label={`${t.caseId} 第 ${t.turnNo} 轮`}
+                    aria-current={active ? 'true' : undefined}
+                    title={`${t.caseId} #${t.turnNo}/${t.totalTurns}`}
+                    className={cn(
+                      'relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-md border font-mono text-xs transition-colors',
+                      active ? 'border-primary ring-2 ring-primary/30' : 'hover:border-primary/50',
+                      done
+                        ? (disagree ? 'bg-warn-soft text-warn font-semibold' : 'bg-pass-soft text-pass font-semibold')
+                        : hasJudgeFail
+                          ? (active ? 'bg-accent text-accent-foreground' : 'bg-fail-soft text-fail')
+                          : (active ? 'bg-accent text-accent-foreground' : 'bg-muted/40 text-muted-foreground'),
+                    )}
+                  >
+                    {i + 1}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </nav>
+
         <div className="rounded-lg border bg-card p-4">
           <div className="text-xs text-muted-foreground">一致率</div>
           <div className="mt-1 font-mono text-3xl font-semibold tabular-nums">{pct(stats.rate)}</div>
