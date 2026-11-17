@@ -14,6 +14,7 @@ import {
   Download,
   Cpu,
   Trash2,
+  AlertCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dimensions as initialDims, scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
@@ -183,13 +184,12 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
           ) : null}
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40">
-              <tr><Th>key</Th><Th>名称</Th><Th>阈值</Th><Th className="text-right">启用</Th><Th className="text-right">操作</Th></tr>
+              <tr><Th className="w-14">key</Th><Th>名称</Th><Th>阈值</Th><Th className="w-16 text-center">启用</Th><Th className="w-12 text-center" /></tr>
             </thead>
             <tbody className="divide-y">
               {dims.map((d) => {
                 const hasScorer = list.some((item) => item.outputs.includes(d.key))
                 const selected = selectedDimKey === d.key
-                const confirmingDelete = confirmDeleteKey === d.key
 
                 return (
                   <tr
@@ -205,7 +205,7 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
                       }
                     }}
                     className={cn(
-                      'transition-colors',
+                      'group transition-colors',
                       hasScorer && 'cursor-pointer hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-ring',
                       !d.enabled && 'text-muted-foreground',
                       selected && 'bg-accent/60',
@@ -219,7 +219,7 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
                         <span>一致 ≥ <span className="font-mono">{d.thresholds.agreement}</span> · n ≥ <span className="font-mono">{d.thresholds.minSamples}</span></span>
                       </div>
                     </Td>
-                    <Td className="text-right">
+                    <Td className="text-center">
                       <button
                         type="button"
                         role="switch"
@@ -229,48 +229,23 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
                           event.stopPropagation()
                           setDims((items) => items.map((item) => (item.key === d.key ? { ...item, enabled: !item.enabled } : item)))
                         }}
-                        className={cn('relative inline-flex h-5 w-9 items-center rounded-full transition-colors', d.enabled ? 'bg-primary' : 'bg-input')}
+                        className={cn('relative inline-flex h-4.5 w-8 items-center rounded-full transition-colors', d.enabled ? 'bg-primary' : 'bg-input')}
                       >
-                        <span className={cn('inline-block size-4 rounded-full bg-card shadow transition-transform', d.enabled ? 'translate-x-4' : 'translate-x-0.5')} />
+                        <span className={cn('inline-block size-3.5 rounded-full bg-card shadow transition-transform', d.enabled ? 'translate-x-3.5' : 'translate-x-0.5')} />
                       </button>
                     </Td>
-                    <Td className="text-right">
-                      {confirmingDelete ? (
-                        <div className="flex justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setConfirmDeleteKey(null)
-                            }}
-                            className="h-7 rounded-md border border-input bg-card px-2 text-[11px] font-medium hover:bg-muted"
-                          >
-                            取消
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              deleteDimension(d.key)
-                            }}
-                            className="h-7 rounded-md border border-fail bg-fail px-2 text-[11px] font-medium text-primary-foreground hover:bg-fail/90"
-                          >
-                            确认删除
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          aria-label={`删除 ${d.name}`}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            setConfirmDeleteKey(d.key)
-                          }}
-                          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-fail-soft hover:text-fail"
-                        >
-                          <Trash2 className="size-3.5" aria-hidden="true" />
-                        </button>
-                      )}
+                    <Td className="text-center">
+                      <button
+                        type="button"
+                        aria-label={`删除 ${d.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setConfirmDeleteKey(d.key)
+                        }}
+                        className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground/40 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus:opacity-100"
+                      >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </button>
                     </Td>
                   </tr>
                 )
@@ -457,6 +432,33 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
           onClose={() => setImportModalOpen(false)}
           onImportComplete={handleImportComplete}
         />
+      )}
+
+      {/* 删除维度二次确认 Dialog */}
+      {confirmDeleteKey && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-xl border bg-card p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                <AlertCircle className="size-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-foreground">删除评测维度</h3>
+                <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                  确定要删除维度 <strong className="font-mono text-foreground">{confirmDeleteKey}</strong>（{dims.find((item) => item.key === confirmDeleteKey)?.name}）吗？删除后相关评分器将解绑该维度。
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Btn size="sm" variant="outline" onClick={() => setConfirmDeleteKey(null)}>
+                取消
+              </Btn>
+              <Btn size="sm" variant="danger" onClick={() => deleteDimension(confirmDeleteKey)}>
+                确认删除
+              </Btn>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
