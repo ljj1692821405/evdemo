@@ -23,6 +23,7 @@ import {
   Sparkles,
   ExternalLink,
   FileText,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tag, Mono, Btn, Th, Td, Panel } from '@/components/eval/primitives'
@@ -54,6 +55,15 @@ const splitLabel = (label: string) => {
   return m ? { zh: m[1].trim(), en: m[2].trim() } : { zh: label, en: '' }
 }
 
+type PlaygroundRow = { id: string; key: string; value: string }
+
+const rowsFromCap = (cap?: RegisteredCapability): PlaygroundRow[] =>
+  (cap?.inputSchema ?? []).map((f, i) => ({
+    id: `${f.name}-${i}`,
+    key: splitLabel(f.label).en || f.name,
+    value: cap?.sampleInputs?.[f.name] ?? '',
+  }))
+
 export function CapabilitiesRegistryView() {
   const { capabilities, registerCapability, deleteCapability } = useCapabilityRegistry()
   const [selectedId, setSelectedId] = useState<string>(capabilities[0]?.id ?? '')
@@ -63,7 +73,7 @@ export function CapabilitiesRegistryView() {
   const [viewTab, setViewTab] = useState<'overview' | 'inputs' | 'dimensions' | 'execution' | 'playground'>('overview')
 
   // Playground 状态
-  const [testInputs, setTestInputs] = useState<Record<string, string>>({})
+  const [playgroundRows, setPlaygroundRows] = useState<PlaygroundRow[]>(() => rowsFromCap(capabilities[0]))
   const [debugResult, setDebugResult] = useState<RegisteredCapability['sampleOutput'] | null>(null)
   const [isDebugRunning, setIsDebugRunning] = useState(false)
 
@@ -78,9 +88,17 @@ export function CapabilitiesRegistryView() {
   const handleSelectCap = (capId: string) => {
     setSelectedId(capId)
     const cap = capabilities.find((c) => c.id === capId)
-    setTestInputs(cap?.sampleInputs ?? {})
+    setPlaygroundRows(rowsFromCap(cap))
     setDebugResult(cap?.sampleOutput ?? null)
   }
+
+  const addPlaygroundRow = () =>
+    setPlaygroundRows((rows) => [...rows, { id: `custom-${Date.now()}`, key: '', value: '' }])
+
+  const removePlaygroundRow = (id: string) => setPlaygroundRows((rows) => rows.filter((r) => r.id !== id))
+
+  const updatePlaygroundRow = (id: string, patch: Partial<PlaygroundRow>) =>
+    setPlaygroundRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
 
   const runPlaygroundDebug = () => {
     setIsDebugRunning(true)
@@ -398,50 +416,56 @@ export function CapabilitiesRegistryView() {
                       <div className="flex items-center justify-between border-b pb-2">
                         <span className="font-semibold text-foreground flex items-center gap-1.5">
                           <Play className="size-3.5 text-primary" />
-                          调试输入 (Test Inputs)
+                          调试输入
                         </span>
+                        <button
+                          type="button"
+                          onClick={addPlaygroundRow}
+                          className="inline-flex items-center gap-1 rounded border border-dashed border-input px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:border-primary/50 hover:text-primary"
+                        >
+                          <Plus className="size-3" />
+                          添加字段
+                        </button>
                       </div>
 
-                      <div className="space-y-2.5">
-                        {currentCap.inputSchema.map((field) => (
-                          <label key={field.name} className="flex flex-col gap-1">
-                            <span className="flex items-center justify-between text-[11px]">
-                              <span className="font-mono font-semibold text-foreground">{field.name}</span>
-                              <Mono className="text-muted-foreground">{field.type}</Mono>
-                            </span>
-                            {field.type === 'image' || field.type === 'video' ? (
-                              <input
-                                type="text"
-                                value={testInputs[field.name] ?? ''}
-                                placeholder={field.placeholder}
-                                onChange={(e) => setTestInputs({ ...testInputs, [field.name]: e.target.value })}
-                                className="h-8 rounded border border-input bg-background px-2.5 text-xs font-mono"
-                              />
-                            ) : field.type === 'text' ? (
-                              <textarea
-                                rows={2}
-                                value={testInputs[field.name] ?? ''}
-                                placeholder={field.placeholder}
-                                onChange={(e) => setTestInputs({ ...testInputs, [field.name]: e.target.value })}
-                                className="rounded border border-input bg-background p-2 text-xs font-mono resize-none"
-                              />
-                            ) : (
-                              <input
-                                type="text"
-                                value={testInputs[field.name] ?? ''}
-                                placeholder={field.placeholder}
-                                onChange={(e) => setTestInputs({ ...testInputs, [field.name]: e.target.value })}
-                                className="h-8 rounded border border-input bg-background px-2.5 text-xs font-mono"
-                              />
-                            )}
-                          </label>
+                      <div className="space-y-2">
+                        {playgroundRows.map((row) => (
+                          <div key={row.id} className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={row.key}
+                              placeholder="字段名"
+                              onChange={(e) => updatePlaygroundRow(row.id, { key: e.target.value })}
+                              className="h-8 w-32 shrink-0 rounded border border-input bg-background px-2 font-mono text-[11px]"
+                            />
+                            <input
+                              type="text"
+                              value={row.value}
+                              placeholder="值"
+                              onChange={(e) => updatePlaygroundRow(row.id, { value: e.target.value })}
+                              className="h-8 min-w-0 flex-1 rounded border border-input bg-background px-2 font-mono text-[11px]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removePlaygroundRow(row.id)}
+                              aria-label={`删除 ${row.key || '字段'}`}
+                              className="flex size-8 shrink-0 items-center justify-center rounded border border-input text-muted-foreground hover:border-fail/40 hover:bg-fail-soft hover:text-fail"
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          </div>
                         ))}
+                        {playgroundRows.length === 0 ? (
+                          <div className="flex items-center justify-center rounded border border-dashed py-6 text-muted-foreground">
+                            <Plus className="size-4 opacity-40" />
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="pt-2 border-t flex justify-end">
                         <Btn variant="primary" size="sm" onClick={runPlaygroundDebug} disabled={isDebugRunning}>
                           <Play className="size-3.5" />
-                          {isDebugRunning ? '正在执行评测...' : '运行调试'}
+                          {isDebugRunning ? '正在执行...' : '运行调试'}
                         </Btn>
                       </div>
                     </div>
@@ -451,7 +475,7 @@ export function CapabilitiesRegistryView() {
                       <div className="flex items-center justify-between border-b pb-2">
                         <span className="font-semibold text-foreground flex items-center gap-1.5">
                           <CheckCircle2 className="size-3.5 text-pass" />
-                          输出响应与指标 (Execution Output)
+                          响应
                         </span>
                         {debugResult ? (
                           <Mono className="text-[11px] text-muted-foreground">{debugResult.latencyMs}ms</Mono>
@@ -460,6 +484,11 @@ export function CapabilitiesRegistryView() {
 
                       {debugResult ? (
                         <div className="space-y-3">
+                          <div className="flex items-center gap-2 rounded border border-pass/30 bg-pass-soft px-3 py-2">
+                            <CheckCircle2 className="size-4 text-pass" />
+                            <span className="text-xs font-semibold text-pass">能力已打通</span>
+                          </div>
+
                           <div className="grid grid-cols-2 gap-2">
                             {Object.entries(debugResult.metrics).map(([key, val]) => (
                               <div key={key} className="rounded border bg-muted/30 p-2.5">
@@ -472,7 +501,7 @@ export function CapabilitiesRegistryView() {
                           </div>
 
                           <div className="rounded bg-muted/40 p-3 space-y-1">
-                            <div className="text-[11px] font-semibold text-primary">证据链 (Evidence)</div>
+                            <div className="text-[11px] font-semibold text-primary">证据链</div>
                             <p className="text-xs text-foreground leading-relaxed">{debugResult.evidence}</p>
                           </div>
                         </div>
