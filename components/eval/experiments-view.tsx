@@ -129,7 +129,6 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                       <Th className="w-10"><span className="sr-only">选择</span></Th>
                       <Th>快照 ID</Th>
                       <Th>数据集</Th>
-                      <Th>备注</Th>
                       <Th className="text-right">case 数</Th>
                     </tr>
                   </thead>
@@ -150,7 +149,6 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                           </Td>
                           <Td><Mono className="whitespace-nowrap font-semibold">{s.id}</Mono></Td>
                           <Td>{datasets.find((d) => d.id === s.datasetId)?.name ?? <span className="text-muted-foreground">已删除</span>}</Td>
-                          <Td className="text-muted-foreground">{s.note || '—'}</Td>
                           <Td className="text-right"><Mono>{s.cases}</Mono></Td>
                         </tr>
                       )
