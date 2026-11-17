@@ -202,10 +202,6 @@ export function CapabilitiesRegistryView() {
                     </div>
                   </div>
 
-                  <p className="line-clamp-2 text-xs text-muted-foreground leading-snug">
-                    {cap.intro}
-                  </p>
-
                   <div className="flex items-center justify-between border-t border-border/40 pt-2 text-[11px] text-muted-foreground">
                     <span>{cap.inputSchema.length} 输入 · {cap.supportedDimensions.length} 维度</span>
                     <Mono className="text-[10px] truncate max-w-28">{cap.entrypoint.target.split(':').pop()}</Mono>
@@ -230,11 +226,7 @@ export function CapabilitiesRegistryView() {
                     <Tag tone={currentCap.status === 'published' ? 'pass' : 'neutral'}><Mono>{currentCap.version}</Mono></Tag>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span><Mono className="text-foreground">{currentCap.code}</Mono></span>
-                    <span>·</span>
-                    <span>责任人: {currentCap.author}</span>
-                    <span>·</span>
-                    <span>更新时间: {currentCap.updatedAt}</span>
+                    <Mono className="text-foreground">{currentCap.code}</Mono>
                   </div>
                 </div>
 
@@ -285,16 +277,6 @@ export function CapabilitiesRegistryView() {
               {/* Tab 1: 概览与契约 */}
               {viewTab === 'overview' && (
                 <div className="mt-4 space-y-4 text-xs">
-                  <div>
-                    <h3 className="font-semibold text-foreground mb-1">能力介绍</h3>
-                    <p className="text-muted-foreground leading-relaxed">{currentCap.intro}</p>
-                  </div>
-
-                  <div>
-                    <h3 className="font-semibold text-foreground mb-1">适用场景</h3>
-                    <p className="text-muted-foreground leading-relaxed">{currentCap.scenario}</p>
-                  </div>
-
                   {/* 输入与输出契约两列对比 */}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="rounded-lg border p-3.5">
@@ -317,7 +299,6 @@ export function CapabilitiesRegistryView() {
                                   <Tag tone="neutral" className="text-[9px] px-1 py-0">可选</Tag>
                                 )}
                               </div>
-                              <div className="text-[11px] text-muted-foreground mt-0.5">{field.label}</div>
                             </div>
                             <Tag tone="primary" className="font-mono text-[10px]">{field.type}</Tag>
                           </div>
@@ -341,7 +322,6 @@ export function CapabilitiesRegistryView() {
                                 <span className="font-medium text-foreground">{m.name}</span>
                                 <Mono className="text-[10px] text-muted-foreground">({m.key})</Mono>
                               </div>
-                              <div className="text-[11px] text-muted-foreground mt-0.5">{m.description}</div>
                             </div>
                             <Tag tone="pass" className="font-mono text-[10px]">{m.type}{m.range ? ` [${m.range[0]}-${m.range[1]}]` : ''}</Tag>
                           </div>
@@ -363,7 +343,6 @@ export function CapabilitiesRegistryView() {
                         <Th>数据类型</Th>
                         <Th>必填</Th>
                         <Th>默认推荐映射</Th>
-                        <Th>说明与样例</Th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -374,7 +353,6 @@ export function CapabilitiesRegistryView() {
                           <Td><Tag tone="primary" className="font-mono text-[11px]">{f.type}</Tag></Td>
                           <Td>{f.required ? <Tag tone="warn">必填</Tag> : <Tag tone="neutral">可选</Tag>}</Td>
                           <Td><Mono className="text-muted-foreground">{f.defaultMapping || '—'}</Mono></Td>
-                          <Td className="text-muted-foreground max-w-xs">{f.description}</Td>
                         </tr>
                       ))}
                     </tbody>
@@ -393,11 +371,6 @@ export function CapabilitiesRegistryView() {
                           <span className="font-semibold text-foreground">{dim.name}</span>
                         </div>
                         <Tag tone="pass">{dim.defaultScoreType === 'scale_5' ? '1~5分' : '0/1 通过率'}</Tag>
-                      </div>
-                      <p className="text-muted-foreground">{dim.description}</p>
-                      <div className="rounded bg-muted/30 p-2.5 text-[11px] leading-relaxed text-foreground">
-                        <span className="font-medium text-muted-foreground">默认判定准则: </span>
-                        {dim.defaultRubric || '标准判定'}
                       </div>
                     </div>
                   ))}
@@ -456,7 +429,7 @@ export function CapabilitiesRegistryView() {
                           <label key={field.name} className="flex flex-col gap-1">
                             <span className="flex items-center justify-between text-[11px]">
                               <span className="font-mono font-semibold text-foreground">{field.name}</span>
-                              <span className="text-muted-foreground">{field.label} ({field.type})</span>
+                              <Mono className="text-muted-foreground">{field.type}</Mono>
                             </span>
                             {field.type === 'image' || field.type === 'video' ? (
                               <input
@@ -526,9 +499,8 @@ export function CapabilitiesRegistryView() {
                           </div>
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
-                          <Play className="size-6 opacity-30 mb-2" />
-                          <p>填写左侧输入后点击「运行调试」验证能力执行</p>
+                        <div className="flex items-center justify-center p-8 text-muted-foreground">
+                          <Play className="size-6 opacity-30" />
                         </div>
                       )}
                     </div>
@@ -567,7 +539,7 @@ function RegisterCapabilityModal({
   const [category, setCategory] = useState<RegisteredCapability['category']>('custom')
   const [executionType, setExecutionType] = useState<CapabilityExecutionType>('python_adapter')
   const [target, setTarget] = useState('evaluators.custom.adapter:CustomEvaluator')
-  const [intro, setIntro] = useState('')
+
   const [inputs, setInputs] = useState<CapabilityInputField[]>([
     { name: 'input_text', label: '输入文本', type: 'text', required: true, description: '评测目标文本' },
     { name: 'reference_text', label: '参考标准', type: 'text', required: false, description: '期望对标内容' },
@@ -592,8 +564,8 @@ function RegisterCapabilityModal({
       status: 'published',
       author: '当前用户',
       updatedAt: '刚刚',
-      intro: intro || '自定义评测能力',
-      scenario: '自定义业务评测',
+      intro: name,
+      scenario: '',
       tags: ['自定义', executionTypeMap[executionType].label],
       executionType,
       entrypoint: {
@@ -675,17 +647,6 @@ function RegisterCapabilityModal({
             />
           </label>
         </div>
-
-        <label className="flex flex-col gap-1">
-          <span className="font-semibold">能力说明</span>
-          <textarea
-            rows={2}
-            value={intro}
-            onChange={(e) => setIntro(e.target.value)}
-            className="rounded border p-2 bg-background resize-none"
-            placeholder="描述该能力评测的输入对象、评估维度及业务价值..."
-          />
-        </label>
 
         {/* Input Schema 动态添加 */}
         <div className="space-y-2 border-t pt-3">
