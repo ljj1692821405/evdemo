@@ -49,6 +49,11 @@ const executionTypeMap: Record<CapabilityExecutionType, { label: string; icon: R
   custom_script: { label: '自定义脚本', icon: FileCode, tone: 'neutral' },
 }
 
+const splitLabel = (label: string) => {
+  const m = label.match(/^(.*?)\s*\(([^)]*)\)\s*$/)
+  return m ? { zh: m[1].trim(), en: m[2].trim() } : { zh: label, en: '' }
+}
+
 export function CapabilitiesRegistryView() {
   const { capabilities, registerCapability, deleteCapability } = useCapabilityRegistry()
   const [selectedId, setSelectedId] = useState<string>(capabilities[0]?.id ?? '')
@@ -325,7 +330,7 @@ export function CapabilitiesRegistryView() {
                   <table className="w-full text-xs">
                     <thead className="border-b bg-muted/40">
                       <tr>
-                        <Th>入参键名 (name)</Th>
+                        <Th>入参键名</Th>
                         <Th>中文名称</Th>
                         <Th>数据类型</Th>
                         <Th>必填</Th>
@@ -335,8 +340,8 @@ export function CapabilitiesRegistryView() {
                     <tbody className="divide-y">
                       {currentCap.inputSchema.map((f) => (
                         <tr key={f.name} className="hover:bg-muted/20">
-                          <Td><Mono className="font-semibold text-foreground">{f.name}</Mono></Td>
-                          <Td><span className="font-medium">{f.label}</span></Td>
+                          <Td><Mono className="font-semibold text-foreground">{splitLabel(f.label).en || f.name}</Mono></Td>
+                          <Td><span className="font-medium">{splitLabel(f.label).zh}</span></Td>
                           <Td><Tag tone="primary" className="font-mono text-[11px]">{f.type}</Tag></Td>
                           <Td>{f.required ? <Tag tone="warn">必填</Tag> : <Tag tone="neutral">可选</Tag>}</Td>
                           <Td><Mono className="text-muted-foreground">{f.defaultMapping || '—'}</Mono></Td>
