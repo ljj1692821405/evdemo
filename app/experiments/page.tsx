@@ -16,7 +16,7 @@ async function ExperimentsContent({ searchParams }: { searchParams: Promise<{ id
   const { id, snapshot } = await searchParams
   return (
     <div>
-      <PageHeader index={6} title="实验与评测" back="/simulations" />
+      <PageHeader index={6} title="实验与评测" />
       <ExperimentsView key={`${id ?? ''}-${snapshot ?? ''}`} initialId={id} newFromSnapshot={snapshot} />
     </div>
   )

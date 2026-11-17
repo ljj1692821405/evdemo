@@ -9,7 +9,6 @@ export default function CapabilitiesPage() {
       <PageHeader
         index={1}
         title="其他评测能力"
-        back="/lines"
       />
       <CapabilitiesRegistryView />
     </div>

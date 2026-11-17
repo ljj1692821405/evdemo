@@ -8,7 +8,7 @@ export default function SimulationsPage() {
   return (
     <AgentDataGate index={5} title="仿真与快照">
       <div>
-        <PageHeader index={5} title="仿真与快照" back="/scorers" />
+        <PageHeader index={5} title="仿真与快照" />
         <SimulationsView />
       </div>
     </AgentDataGate>
