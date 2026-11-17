@@ -24,6 +24,7 @@ import {
   ExternalLink,
   FileText,
   X,
+  Paperclip,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tag, Mono, Btn, Th, Td, Panel } from '@/components/eval/primitives'
@@ -55,7 +56,7 @@ const splitLabel = (label: string) => {
   return m ? { zh: m[1].trim(), en: m[2].trim() } : { zh: label, en: '' }
 }
 
-type PlaygroundRow = { id: string; key: string; value: string }
+type PlaygroundRow = { id: string; key: string; value: string; kind?: 'text' | 'image'; fileName?: string }
 
 const rowsFromCap = (cap?: RegisteredCapability): PlaygroundRow[] =>
   (cap?.inputSchema ?? []).map((f, i) => ({
@@ -99,6 +100,17 @@ export function CapabilitiesRegistryView() {
 
   const updatePlaygroundRow = (id: string, patch: Partial<PlaygroundRow>) =>
     setPlaygroundRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+
+  const uploadPlaygroundFile = (id: string, file: File | undefined) => {
+    if (!file) return
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = () => updatePlaygroundRow(id, { value: String(reader.result ?? ''), kind: 'image', fileName: file.name })
+      reader.readAsDataURL(file)
+      return
+    }
+    file.text().then((text) => updatePlaygroundRow(id, { value: text, kind: 'text', fileName: file.name }))
+  }
 
   const runPlaygroundDebug = () => {
     setIsDebugRunning(true)
@@ -430,29 +442,71 @@ export function CapabilitiesRegistryView() {
 
                       <div className="space-y-2">
                         {playgroundRows.map((row) => (
-                          <div key={row.id} className="flex items-center gap-1.5">
-                            <input
-                              type="text"
-                              value={row.key}
-                              placeholder="字段名"
-                              onChange={(e) => updatePlaygroundRow(row.id, { key: e.target.value })}
-                              className="h-8 w-32 shrink-0 rounded border border-input bg-background px-2 font-mono text-[11px]"
-                            />
-                            <input
-                              type="text"
-                              value={row.value}
-                              placeholder="值"
-                              onChange={(e) => updatePlaygroundRow(row.id, { value: e.target.value })}
-                              className="h-8 min-w-0 flex-1 rounded border border-input bg-background px-2 font-mono text-[11px]"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removePlaygroundRow(row.id)}
-                              aria-label={`删除 ${row.key || '字段'}`}
-                              className="flex size-8 shrink-0 items-center justify-center rounded border border-input text-muted-foreground hover:border-fail/40 hover:bg-fail-soft hover:text-fail"
-                            >
-                              <X className="size-3.5" />
-                            </button>
+                          <div key={row.id} className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                value={row.key}
+                                placeholder="字段名"
+                                onChange={(e) => updatePlaygroundRow(row.id, { key: e.target.value })}
+                                className="h-8 w-32 shrink-0 rounded border border-input bg-background px-2 font-mono text-[11px]"
+                              />
+                              <input
+                                type="text"
+                                value={row.kind === 'image' ? row.fileName ?? '' : row.value}
+                                placeholder="值"
+                                readOnly={row.kind === 'image'}
+                                onChange={(e) => updatePlaygroundRow(row.id, { value: e.target.value })}
+                                className="h-8 min-w-0 flex-1 rounded border border-input bg-background px-2 font-mono text-[11px] read-only:text-muted-foreground"
+                              />
+                              <label
+                                aria-label={`上传 ${row.key || '字段'} 的 txt 或图片`}
+                                className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded border border-input text-muted-foreground hover:border-primary/50 hover:text-primary"
+                              >
+                                <Paperclip className="size-3.5" />
+                                <input
+                                  type="file"
+                                  accept=".txt,text/plain,image/*"
+                                  className="sr-only"
+                                  onChange={(e) => {
+                                    uploadPlaygroundFile(row.id, e.target.files?.[0])
+                                    e.target.value = ''
+                                  }}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => removePlaygroundRow(row.id)}
+                                aria-label={`删除 ${row.key || '字段'}`}
+                                className="flex size-8 shrink-0 items-center justify-center rounded border border-input text-muted-foreground hover:border-fail/40 hover:bg-fail-soft hover:text-fail"
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
+                            {row.kind === 'image' && row.value ? (
+                              <div className="flex items-center gap-2.5 rounded-md border bg-muted/20 p-2">
+                                <div className="relative shrink-0">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={row.value}
+                                    alt={row.fileName ?? '上传图片'}
+                                    className="size-16 rounded border bg-card object-cover"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => updatePlaygroundRow(row.id, { value: '', kind: 'text', fileName: undefined })}
+                                    aria-label="移除图片"
+                                    className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-sm transition-colors hover:border-fail/40 hover:bg-fail hover:text-white"
+                                  >
+                                    <X className="size-3" />
+                                  </button>
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[11px] font-medium text-foreground">图片已就绪</div>
+                                  <div className="text-[10px] text-muted-foreground">点击右上角 × 可移除</div>
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         ))}
                         {playgroundRows.length === 0 ? (
@@ -487,6 +541,10 @@ export function CapabilitiesRegistryView() {
                           <div className="flex items-center gap-2 rounded border border-pass/30 bg-pass-soft px-3 py-2">
                             <CheckCircle2 className="size-4 text-pass" />
                             <span className="text-xs font-semibold text-pass">能力已打通</span>
+                            <Mono className="ml-auto text-[11px] text-pass">
+                              已接收 {playgroundRows.length} 个输入
+                              {playgroundRows.some((r) => r.kind === 'image') ? ` · 含 ${playgroundRows.filter((r) => r.kind === 'image').length} 张图片` : ''}
+                            </Mono>
                           </div>
 
                           <div className="grid grid-cols-2 gap-2">
