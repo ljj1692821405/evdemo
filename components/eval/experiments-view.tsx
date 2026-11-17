@@ -29,7 +29,7 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
   const [runList, setRunList] = useState<Run[]>(initialRuns)
   const [sel, setSel] = useState(initialId && initialExps.some((e) => e.id === initialId) ? initialId : initialExps[0].id)
   const [creating, setCreating] = useState(Boolean(newFromSnapshot))
-  const [draft, setDraft] = useState({ name: '', snapshotId: newFromSnapshot ?? snapshots[0].id, scorerIds: ['sc_intent'] as string[] })
+  const [draft, setDraft] = useState({ name: '', snapshotId: newFromSnapshot ?? snapshots[0].id, scorerIds: [scorers[0].id] as string[] })
 
   const exp = exps.find((e) => e.id === sel)!
   const expRuns = runList.filter((r) => r.experimentId === exp.id)

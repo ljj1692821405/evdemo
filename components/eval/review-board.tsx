@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, MessageSquare, Bot, Wrench, Gavel, FileDiff, Zap, Check, X, ScrollText, GitCompareArrows } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MessageSquare, Bot, Wrench, Gavel, FileDiff, Zap, Check, X, ScrollText, GitCompareArrows, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dimensions, reviewSchema, reviewTurns as allTurns, type Verdict } from '@/lib/mock-data'
 import { agreementStats, pct } from '@/lib/stats'
@@ -18,9 +18,7 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
   )
   const [idx, setIdx] = useState(0)
   const [focusDim, setFocusDim] = useState(0)
-  const [human, setHuman] = useState<Record<string, Verdict>>({
-    [key('case_0001', 1, '5.3')]: 'fail',
-  })
+  const [human, setHuman] = useState<Record<string, Verdict>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState(false)
   const noteRef = useRef<HTMLTextAreaElement>(null)
@@ -150,9 +148,50 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
                 </li>
               ))}
             </ol>
+            {turn.cards?.length ? (
+              <ul className="mt-2.5 flex flex-col gap-1.5">
+                {turn.cards.map((card) => (
+                  <li key={card.title} className="flex flex-wrap items-center gap-1.5 rounded-md border bg-muted/30 px-2.5 py-1.5 text-sm">
+                    <span className="mr-1 font-medium">{card.title}</span>
+                    {card.options.map((o) => (
+                      <Tag key={o.label} tone={card.selected.includes(o.label) ? 'primary' : 'neutral'} className="px-2 py-1 text-xs">
+                        {card.selected.includes(o.label) ? <Check className="size-3" aria-label="已选" /> : null}
+                        {o.label}
+                      </Tag>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {turn.writeConfirm ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                <span>{turn.writeConfirm.title}</span>
+                <Tag tone={turn.writeConfirm.confirmed ? 'pass' : 'neutral'} className="px-2 py-1 text-xs">{turn.writeConfirm.confirmed ? '已确认写入' : '未确认'}</Tag>
+              </div>
+            ) : null}
           </Section>
 
-          <Section icon={Gavel} n={4} label="裁判">
+          {turn.gt?.length ? (
+            <Section icon={ListChecks} n={4} label="准绳">
+              <div className="flex flex-col gap-3">
+                {turn.gt.map((g) => (
+                  <div key={g.key} className="flex flex-col gap-1">
+                    <Mono className="font-semibold text-primary">{g.key}</Mono>
+                    <ol className="flex flex-col gap-1">
+                      {g.points.map((p, i) => (
+                        <li key={i} className="flex gap-2 text-sm leading-relaxed">
+                          <Mono className="mt-0.5 shrink-0 text-muted-foreground">{i + 1}</Mono>
+                          <span className="min-w-0 text-pretty">{p}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          <Section icon={Gavel} n={5} label="裁判">
             <ul className="flex flex-col gap-2">
               {turn.judgments.map((j, i) => {
                 const dim = dimensions.find((d) => d.key === j.dim)!
@@ -209,7 +248,7 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
             </ul>
           </Section>
 
-          <Section icon={FileDiff} n={5} label="工作区">
+          <Section icon={FileDiff} n={6} label="工作区">
             <WorkspaceDiff key={turnKey} meta={turn.workspace.meta} before={turn.workspace.before} after={turn.workspace.after} />
           </Section>
 

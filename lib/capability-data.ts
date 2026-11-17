@@ -299,18 +299,9 @@ export const toFrozen = (items: ResolvedItem[]): FrozenItem[] =>
 
 const agentCodes: Record<string, string> = { ag_skill: 'skill-agent', ag_doc_qa: 'doc-qa' }
 
-const expBinding: Record<string, string> = {
-  exp_031: 'cfg_doc_editor_v1_2',
-  exp_029: 'cfg_doc_editor_v1_2',
-  exp_027: 'cfg_doc_editor_v1_2',
-  exp_024: 'cfg_doc_editor_v1_1',
-  exp_021: 'cfg_doc_editor_v1_1',
-  exp_018: 'cfg_doc_editor_v1_0',
-}
-
 export const frozenSnapshots: FrozenSnapshot[] = Object.freeze(
   experiments.flatMap((e) => {
-    const cfg = seedConfigs.find((c) => c.id === expBinding[e.id])
+    const cfg = seedConfigs.find((c) => c.id === 'cfg_skill_v1_3')
     if (!cfg) return []
     return [
       Object.freeze({

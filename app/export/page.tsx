@@ -8,7 +8,7 @@ export default function ExportPage() {
   return (
     <AgentDataGate index={10} title="报告 / 导出">
       <div>
-        <PageHeader index={10} title="报告 / 导出" back="/review?run=run_0412" actions={<Tag>只读</Tag>} />
+        <PageHeader index={10} title="报告 / 导出" back="/review" actions={<Tag>只读</Tag>} />
         <ExportView />
       </div>
     </AgentDataGate>

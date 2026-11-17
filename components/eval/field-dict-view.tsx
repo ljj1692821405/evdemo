@@ -32,7 +32,7 @@ export function FieldDictView() {
   const [scripts] = usePreprocessScripts()
   const { agent } = useScope()
   const { tools, configVersion } = useAgentTools(agent?.id)
-  const [selected, setSelected] = useState('tool_calls')
+  const [selected, setSelected] = useState('action_sequence')
   const [adding, setAdding] = useState(false)
   const [confirming, setConfirming] = useState<string | null>(null)
   const entry = dict.find(selected) ?? dict.entries[0]

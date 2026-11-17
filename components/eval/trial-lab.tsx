@@ -136,7 +136,7 @@ export function TrialLab({ scorer, template, background, agentBackground, tools,
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="case_0001"
+                placeholder="intent_0001"
                 className="h-7 w-full rounded-md border bg-card pl-7 pr-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               />
             </label>

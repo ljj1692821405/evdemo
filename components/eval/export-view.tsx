@@ -8,6 +8,8 @@ import { Panel, Tag, Mono, Btn } from './primitives'
 
 type Format = 'csv' | 'json' | 'md'
 
+const exportName = 'golden_demo'
+
 const columns = [
   { key: 'case_id', label: 'case_id', locked: true },
   { key: 'turn_no', label: 'turn_no', locked: true },
@@ -31,7 +33,7 @@ export function ExportView() {
           turn_no: String(t.turnNo),
           dimension: j.dim,
           judge: j.verdict,
-          human: t.caseId === 'case_0001' && j.dim === '5.3' ? 'fail' : '',
+          human: '',
           reason: j.reason,
           scorer: j.scorerId,
           user: t.user,
@@ -42,23 +44,26 @@ export function ExportView() {
 
   const output = useMemo(() => {
     const picked = rows.map((r) => Object.fromEntries(cols.map((c) => [c, r[c as keyof typeof r]])))
-    if (format === 'json') return JSON.stringify({ run_id: 'run_0412', rows: picked }, null, 2)
+    if (format === 'json') return JSON.stringify({ export: exportName, rows: picked }, null, 2)
     if (format === 'csv') {
       const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
       return [cols.join(','), ...picked.map((r) => cols.map((c) => esc(String(r[c] ?? ''))).join(','))].join('\n')
     }
-    const s = runStats.run_0412
+    const all = Object.values(runStats)
+    const casePass = all.reduce((n, x) => n + x.caseRate[0], 0)
+    const caseTotal = all.reduce((n, x) => n + x.caseRate[1], 0)
+    const s = { dims: all.flatMap((x) => x.dims), failTop: all.flatMap((x) => x.failTop) }
     return [
-      '# 评测报告 · run_0412',
+      `# 评测报告 · ${exportName}`,
       '',
-      `- 总通过率（case）：${((s.caseRate[0] / s.caseRate[1]) * 100).toFixed(1)}%（${s.caseRate[0]}/${s.caseRate[1]}）`,
-      `- 裁判-人工一致率：${((s.agreement.agree / s.agreement.n) * 100).toFixed(1)}%（基于 ${s.agreement.n} 条）`,
+      `- 总通过率（case）：${caseTotal ? ((casePass / caseTotal) * 100).toFixed(1) : '—'}%（${casePass}/${caseTotal}）`,
+      '- 裁判-人工一致率：—（尚无人工复核）',
       '',
       '| 维度 | 通过率 | na | error |',
       '| --- | --- | --- | --- |',
       ...s.dims.map((d) => `| ${d.key} ${dimensions.find((x) => x.key === d.key)?.name} | ${((d.caseRate[0] / d.caseRate[1]) * 100).toFixed(1)}% | ${d.na} | ${d.error} |`),
       '',
-      '## 失败 Top5',
+      '## 失败明细',
       ...s.failTop.map((f) => `- \`${f.caseId}\` ${f.dim}：${f.reason}`),
     ].join('\n')
   }, [rows, cols, format])
@@ -69,7 +74,7 @@ export function ExportView() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `run_0412.${format}`
+    a.download = `${exportName}.${format}`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -121,7 +126,7 @@ export function ExportView() {
           </div>
         </Panel>
         <Btn variant="primary" onClick={download}>
-          <Download className="size-4" aria-hidden="true" />下载 run_0412.{format}
+          <Download className="size-4" aria-hidden="true" />下载 {exportName}.{format}
         </Btn>
       </div>
 

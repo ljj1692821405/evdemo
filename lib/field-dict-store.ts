@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react'
 import {
+  derivedSamples,
   dimensions as seedDimensions,
   fieldDict as seedEntries,
   sampleSimTraj,
@@ -16,11 +17,11 @@ export { useShared } from './shared-store'
 
 type DictState = { version: number; base: number; entries: FieldEntry[] }
 
-const defaultFieldNames = ['user_query', 'agent_reply', 'tool_calls', 'turn_status']
+const defaultFieldNames = ['user_query', 'agent_reply', 'action_sequence', 'turn_status']
 
 const seedDict = (isDemo: boolean): DictState =>
   isDemo
-    ? { version: 5, base: 5, entries: seedEntries }
+    ? { version: 1, base: 1, entries: seedEntries }
     : { version: 1, base: 1, entries: seedEntries.filter((e) => defaultFieldNames.includes(e.logicalName)) }
 
 export function useFieldDict() {
@@ -69,11 +70,6 @@ export function useDimensions(agentId?: string) {
 export const isRawPath = (p: string) => p.startsWith('raw.')
 export const isDerivedPath = (p: string) => p.startsWith('derived.')
 export const isValidFieldName = (n: string) => /^[a-z][a-z0-9_]*$/.test(n)
-
-const derivedSamples: Record<string, string> = {
-  workspace_unchanged: '未变动：# 标题 · ## 下周计划 · ## 附录 · 表格 ×2',
-  tool_seq: 'doc.read → doc.edit',
-}
 
 export function resolvePath(path: string): unknown {
   if (isRawPath(path)) return undefined

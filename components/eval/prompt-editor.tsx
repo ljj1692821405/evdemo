@@ -6,7 +6,7 @@ import { AlertTriangle, Braces, Pencil, Plus, UserRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Mono, Tag } from './primitives'
 
-export const judgeModels = ['openai/gpt-5-mini', 'openai/gpt-5', 'anthropic/claude-sonnet-4.5', 'google/gemini-2.5-flash']
+export const judgeModels = ['openai/gpt-5.4-mini', 'openai/gpt-5-mini', 'openai/gpt-5', 'anthropic/claude-sonnet-4.5', 'google/gemini-2.5-flash']
 
 const VAR_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
 

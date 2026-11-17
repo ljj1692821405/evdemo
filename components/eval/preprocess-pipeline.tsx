@@ -18,32 +18,13 @@ import {
 import { cn } from '@/lib/utils'
 import { resolveEntry, useFieldDict } from '@/lib/field-dict-store'
 import { useAgentShared } from '@/lib/tenant-store'
+import { demoData, shortTime, turnFieldValues } from '@/lib/demo-data'
+import { fieldDict } from '@/lib/mock-data'
 import { Panel, Tag, Mono } from './primitives'
 
 type FieldNode = { name: string; tokens: number; sample: string }
 
-const sourceSamples: FieldNode[] = [
-  {
-    name: 'workspace_before',
-    tokens: 7800,
-    sample: '# 周报 W46\n## 本周进展\n当前进度 65%，预计周五完成联调。\n## 下周计划\n…（共 42 段）',
-  },
-  {
-    name: 'workspace_after',
-    tokens: 8100,
-    sample: '# 周报 W46\n## 本周进展\n当前进度 80%，联调提前完成。\n## 风险\n依赖方接口延期 1 天。\n## 下周计划\n…（共 44 段）',
-  },
-  {
-    name: 'tool_calls',
-    tokens: 310,
-    sample: '[{"name":"doc.read","args":{"doc_id":"wk_46"}},{"name":"doc.edit","args":{...}}]',
-  },
-  {
-    name: 'agent_reply',
-    tokens: 420,
-    sample: '已将进度更新为 80%，并补充了依赖方接口延期 1 天的风险说明。',
-  },
-]
+const sourceSamples: FieldNode[] = []
 
 type Version = { v: string; status: 'draft' | 'published' }
 
@@ -59,59 +40,48 @@ type Script = {
 
 type CacheEntry = { key: string; status: 'cached' | 'computing' | 'error'; at: string; by: string; tok: number }
 
-const initialScripts: Script[] = [
-  {
-    id: 'ws_diff_extract',
-    name: 'ws_diff_extract',
-    versions: [
-      { v: 'v4', status: 'draft' },
-      { v: 'v3', status: 'published' },
-      { v: 'v2', status: 'published' },
-    ],
-    inputs: ['workspace_before', 'workspace_after'],
-    outputs: [
-      {
-        name: 'workspace_diff',
-        tokens: 540,
-        sample: '@@ 本周进展 @@\n- 当前进度 65%，预计周五完成联调。\n+ 当前进度 80%，联调提前完成。\n@@ 风险（新增） @@\n+ 依赖方接口延期 1 天。',
-      },
-      { name: 'workspace_unchanged', tokens: 120, sample: '未变动：# 标题 · ## 下周计划 · ## 附录 · 表格 ×2' },
-    ],
-    code: `def extract(workspace_before: str, workspace_after: str) -> dict:
-    a, b = split_sections(workspace_before), split_sections(workspace_after)
-    diff = unified_diff(a, b, context=0)
-    unchanged = [s.title for s in a if s in b]
-    return {
-        "workspace_diff": diff,
-        "workspace_unchanged": "未变动：" + " · ".join(unchanged),
-    }`,
-    consumers: ['sc_ws@v2', 'sc_reply@v2'],
-  },
-  {
-    id: 'tool_seq_compact',
-    name: 'tool_seq_compact',
-    versions: [{ v: 'v1', status: 'published' }],
-    inputs: ['tool_calls'],
-    outputs: [{ name: 'tool_seq', tokens: 40, sample: 'doc.read → doc.edit' }],
-    code: `def extract(tool_calls: list) -> dict:
-    return {"tool_seq": " → ".join(c["name"] for c in tool_calls)}`,
-    consumers: ['sc_tool@v3'],
-  },
+const demoTurnValues = demoData.cases.flatMap((c) => c.turns.map((t) => ({ c, t, values: turnFieldValues(c, t) })))
+
+const outputNode = (name: string): FieldNode => {
+  const sample = demoTurnValues.find((x) => x.values[name])?.values[name] ?? ''
+  return {
+    name,
+    tokens: fieldDict.find((f) => f.logicalName === name)?.avgTokens ?? 0,
+    sample: sample.length > 600 ? `${sample.slice(0, 600)}…` : sample,
+  }
+}
+
+const scriptDefs = [
+  { id: 'workspace_diff', inputs: ['workspace_before', 'workspace_after'], outputs: ['diff_stats', 'metadata_diff_text', 'scoped_modified_diff'], consumer: 'sc_judge2@v1' },
+  { id: 'section_radar', inputs: ['workspace_before', 'workspace_after'], outputs: ['skeleton_radar_summary'], consumer: 'sc_judge2@v1' },
+  { id: 'temporal_tracker', inputs: ['workspace_after', 'ground_truth'], outputs: ['temporal_audit_summary'], consumer: 'sc_judge2@v1' },
+  { id: 'interaction_flow', inputs: ['interactive_cards', 'write_confirm', 'file_actions'], outputs: ['interaction_flow'], consumer: 'sc_judge1@v1' },
 ]
 
-const cacheByScript: Record<string, CacheEntry[]> = {
-  ws_diff_extract: [
-    { key: 'case_0001#1', status: 'cached', at: '11-14 10:16', by: 'sc_ws@v2', tok: 660 },
-    { key: 'case_0002#1', status: 'cached', at: '11-14 10:16', by: 'sc_ws@v2', tok: 512 },
-    { key: 'case_0002#2', status: 'cached', at: '11-14 10:17', by: 'sc_reply@v2', tok: 488 },
-    { key: 'case_0003#1', status: 'computing', at: '—', by: 'sc_ws@v2', tok: 0 },
-    { key: 'case_0004#1', status: 'error', at: '11-14 10:17', by: 'sc_ws@v2', tok: 0 },
-  ],
-  tool_seq_compact: [
-    { key: 'case_0001#1', status: 'cached', at: '11-14 10:15', by: 'sc_tool@v3', tok: 40 },
-    { key: 'case_0002#1', status: 'cached', at: '11-14 10:15', by: 'sc_tool@v3', tok: 36 },
-  ],
-}
+const initialScripts: Script[] = scriptDefs.map((d) => ({
+  id: d.id,
+  name: d.id,
+  versions: [{ v: 'v1', status: 'published' }],
+  inputs: d.inputs,
+  outputs: d.outputs.map(outputNode),
+  code: demoData.scripts[d.id] ?? '',
+  consumers: [d.consumer],
+}))
+
+const cacheByScript: Record<string, CacheEntry[]> = Object.fromEntries(
+  scriptDefs.map((d) => [
+    d.id,
+    demoTurnValues
+      .filter((x) => d.outputs.some((o) => x.values[o]))
+      .map((x) => ({
+        key: `${x.c.caseId}#${x.t.turn}`,
+        status: 'cached' as const,
+        at: shortTime(x.c.runTime),
+        by: d.consumer,
+        tok: Math.round(d.outputs.reduce((n, o) => n + (x.values[o]?.length ?? 0), 0) * 1.4),
+      })),
+  ]),
+)
 
 type RunState = 'idle' | 'running' | 'done'
 type Selection = { kind: 'script' } | { kind: 'store' } | { kind: 'field'; name: string }
@@ -376,7 +346,7 @@ function ScriptPipeline() {
             <pre className="overflow-auto bg-muted/30 p-4 font-mono text-[12px] leading-relaxed">{script.code}</pre>
             <div className="flex flex-col gap-3 border-t p-4 lg:border-l lg:border-t-0">
               <div className="flex items-center justify-between">
-                <Mono className="text-xs">case_0001#1</Mono>
+                <Mono className="text-xs">{cache[0]?.key ?? "—"}</Mono>
                 <button
                   type="button"
                   onClick={startRun}

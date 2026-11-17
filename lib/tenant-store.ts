@@ -61,8 +61,8 @@ const seedLines: ProductLine[] = [
           { id: 'm3', role: 'sim_user', model: 'anthropic/claude-sonnet-4.5' },
         ],
         tasks: [
-          { id: 't1', name: '核心能力回归', dimensions: ['5.1', '5.2', '5.3', '5.4'], schedule: 'pre_release', active: true },
-          { id: 't2', name: '澄清行为巡检', dimensions: ['6.1'], schedule: 'daily', active: true },
+          { id: 't1', name: '核心能力回归', dimensions: ['1.1', '2.1', '3.2', '4.1', '4.2', '5.1', '5.2'], schedule: 'pre_release', active: true },
+          { id: 't2', name: '边界与安全巡检', dimensions: ['6.1', '6.2'], schedule: 'daily', active: true },
         ],
       },
     ],
