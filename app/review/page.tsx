@@ -21,7 +21,7 @@ async function ReviewContent({ searchParams }: { searchParams: Promise<{ run?: s
   if (!ctx) {
     return (
       <div>
-        <PageHeader index={8} title="核对看板" back="/dashboard" />
+        <PageHeader index={8} title="核对看板" />
         <RunPicker basePath="/review" />
       </div>
     )

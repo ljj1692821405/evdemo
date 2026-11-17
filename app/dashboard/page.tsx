@@ -24,7 +24,7 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<{ run?
   if (!ctx) {
     return (
       <div>
-        <PageHeader index={7} title="数据看板" back="/experiments" />
+        <PageHeader index={7} title="数据看板" />
         <DashboardOverview />
       </div>
     )

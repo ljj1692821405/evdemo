@@ -9,7 +9,6 @@ export default function AnnotationPage() {
       <PageHeader
         index={9}
         title="标注工作台"
-        back="/review"
       />
       <AnnotationWorkspaceView />
     </div>
