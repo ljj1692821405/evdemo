@@ -4,7 +4,8 @@ import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { datasets, experiments, runs, simJobs as initialJobs, snapshots as initialSnaps, type SimJob, type SimJobStatus, type Snapshot } from '@/lib/mock-data'
+import { experiments, runs, simJobs as initialJobs, snapshots as initialSnaps, type SimJob, type SimJobStatus, type Snapshot } from '@/lib/mock-data'
+import { useDatasets } from '@/lib/dataset-store'
 import { Panel, Mono, Th, Td, Btn, Progress } from './primitives'
 
 const statusLabel: Record<SimJobStatus, string> = {
@@ -43,9 +44,10 @@ const runParams = [
 const selectCls = 'h-9 rounded-md border border-input bg-card px-2.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring'
 
 export function SimulationsView() {
+  const { datasets } = useDatasets()
   const [jobs, setJobs] = useState<SimJob[]>(initialJobs)
   const [snaps, setSnaps] = useState<Snapshot[]>(initialSnaps)
-  const [dsId, setDsId] = useState(datasets[0].id)
+  const [dsId, setDsId] = useState(datasets[0]?.id ?? '')
   const [script, setScript] = useState(scripts[0])
   const [openJob, setOpenJob] = useState<string | null>(null)
   const [openSnap, setOpenSnap] = useState<string | null>(null)
@@ -82,7 +84,8 @@ export function SimulationsView() {
   }, [jobs, snaps])
 
   const start = () => {
-    const ds = datasets.find((d) => d.id === dsId)!
+    const ds = datasets.find((d) => d.id === dsId) ?? datasets[0]
+    if (!ds) return
     const id = `job_${1108 + jobs.length - initialJobs.length}`
     setJobs((j) => [{ id, datasetId: ds.id, script, status: 'pending', done: 0, total: ds.caseCount, failed: 0, startedAt: '刚刚', errors: [] }, ...j])
   }
@@ -108,7 +111,7 @@ export function SimulationsView() {
             {scripts.map((s) => <option key={s}>{s}</option>)}
           </select>
         </label>
-        <Btn variant="primary" type="submit" className="ml-auto h-9 px-4">
+        <Btn variant="primary" type="submit" disabled={datasets.length === 0} className="ml-auto h-9 px-4">
           <Play className="size-4" aria-hidden="true" />开始仿真
         </Btn>
       </form>
@@ -129,14 +132,14 @@ export function SimulationsView() {
           </thead>
           <tbody className="divide-y">
             {jobs.map((j) => {
-              const ds = datasets.find((d) => d.id === j.datasetId)!
+              const ds = datasets.find((d) => d.id === j.datasetId)
               const rate = j.total ? j.failed / j.total : 0
               const open = openJob === j.id
               return (
                 <Fragment key={j.id}>
                   <tr onClick={() => setOpenJob(open ? null : j.id)} className={cn('cursor-pointer', open ? 'bg-accent/40' : 'hover:bg-muted/40')}>
                     <Td><Mono className="text-sm font-semibold">{j.id}</Mono></Td>
-                    <Td>{ds.name}</Td>
+                    <Td>{ds?.name ?? <span className="text-muted-foreground">已删除</span>}</Td>
                     <Td>
                       <span className="flex items-center gap-2 whitespace-nowrap">
                         <span className={cn('size-2 rounded-full', statusDot[j.status], j.status === 'running' && 'animate-pulse')} aria-hidden="true" />
@@ -232,7 +235,7 @@ export function SimulationsView() {
           </thead>
           <tbody className="divide-y">
             {snaps.map((s) => {
-              const ds = datasets.find((d) => d.id === s.datasetId)!
+              const ds = datasets.find((d) => d.id === s.datasetId)
               const refs = experiments.filter((e) => e.snapshotId === s.id)
               const runCount = runs.filter((r) => refs.some((e) => e.id === r.experimentId)).length
               const open = openSnap === s.id
@@ -240,7 +243,7 @@ export function SimulationsView() {
                 <Fragment key={s.id}>
                   <tr className={cn(open && 'bg-accent/40')}>
                     <Td><Mono className="text-sm font-semibold">{s.id}</Mono></Td>
-                    <Td>{ds.name}</Td>
+                    <Td>{ds?.name ?? <span className="text-muted-foreground">已删除</span>}</Td>
                     <Td className="text-right">
                       <Mono className="text-sm">{s.cases}</Mono>
                       {s.missingCases ? <span className="ml-2 whitespace-nowrap text-warn">缺 <span className="font-mono">{s.missingCases}</span></span> : null}

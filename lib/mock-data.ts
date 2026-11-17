@@ -26,6 +26,7 @@ export type CaseItem = {
   gtKeys: string[]
   valid: boolean
   invalidReason?: string
+  raw?: Record<string, unknown>
 }
 
 export const cases: CaseItem[] = [
