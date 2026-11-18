@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Play, Plus, Snowflake, Lock, BarChart3, Boxes, Activity, Terminal, CheckCircle2, AlertTriangle, ChevronRight, X, Cpu } from 'lucide-react'
+import { Play, Plus, Snowflake, Lock, BarChart3, Boxes, Activity, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { useScope } from '@/lib/tenant-store'
 import { useCapabilities } from '@/lib/capability-store'
 import { resolveConfig, snapshotForExp, toFrozen, type FrozenSnapshot } from '@/lib/capability-data'
@@ -28,6 +28,14 @@ type RunnerStep = {
   detail?: string
 }
 
+const uniqueName = (base: string, existing: string[]) => {
+  const name = base.trim() || '未命名实验'
+  if (!existing.includes(name)) return name
+  let n = 2
+  while (existing.includes(`${name} #${n}`)) n += 1
+  return `${name} #${n}`
+}
+
 export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: string; newFromSnapshot?: string }) {
   const { version: fieldDictVersion } = useFieldDict()
   const { agent } = useScope()
@@ -47,6 +55,16 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
   const exp = exps.find((e) => e.id === sel)!
   const expRuns = runList.filter((r) => r.experimentId === exp.id)
   const busy = runList.some((r) => r.status === 'running' || r.status === 'queued')
+
+  const snapshotLabel = (snapshotId: string) => {
+    const snap = snapshots.find((s) => s.id === snapshotId)
+    const ds = snap ? datasets.find((d) => d.id === snap.datasetId) : undefined
+    return ds?.name ?? snapshotId
+  }
+
+  const draftName = draft.name.trim()
+  const nameTaken = draftName !== '' && exps.some((e) => e.name === draftName)
+  const nextName = nameTaken ? uniqueName(draftName, exps.map((e) => e.name)) : draftName
 
   useEffect(() => {
     if (!busy) return
@@ -124,7 +142,8 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
     const id = `exp_0${32 + exps.length - initialExps.length}`
     const outputs = draft.scorerIds.flatMap((sid) => scorers.find((s) => s.id === sid)!.outputs)
     const weights = Object.fromEntries(outputs.map((o) => [o, Number((1 / outputs.length).toFixed(2))]))
-    setExps((e) => [{ id, name: draft.name || '未命名实验', snapshotId: draft.snapshotId, scorerIds: draft.scorerIds, weights, createdBy: '我', createdAt: '刚刚', fieldDictVersion }, ...e])
+    const finalName = uniqueName(draft.name, exps.map((e) => e.name))
+    setExps((e) => [{ id, name: finalName, snapshotId: draft.snapshotId, scorerIds: draft.scorerIds, weights, createdBy: '我', createdAt: '刚刚', fieldDictVersion }, ...e])
     const cfg = agent ? caps.currentOf(agent.id) : undefined
     if (agent && cfg) {
       const snap = Object.freeze({ expId: id, agentId: agent.id, agentCode: agent.code, configVersion: cfg.version, backgroundVersion: `v${agent.backgroundVersion ?? 0}`, frozenAt: '刚刚', items: toFrozen(resolveConfig(cfg, caps.assets)) })
@@ -134,8 +153,6 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
     setCreating(false)
     setDraft((d) => ({ ...d, name: '' }))
   }
-
-  const published = scorers.filter((s) => s.status === 'published')
 
   return (
     <div className="grid grid-cols-1 gap-4 p-6 xl:grid-cols-[320px_1fr]">
@@ -156,11 +173,15 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                     aria-current={e.id === sel && !creating ? 'true' : undefined}
                     className={cn('w-full rounded-md px-3 py-2 text-left', e.id === sel && !creating ? 'bg-accent' : 'hover:bg-muted')}
                   >
-                    <div className="truncate text-sm font-medium">{e.name}</div>
-                    <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <Mono>{e.id}</Mono>
-                      <span className="flex items-center gap-1"><Snowflake className="size-3" aria-hidden="true" /><Mono>{e.snapshotId}</Mono></span>
-                      <span className="ml-auto">{n} run</span>
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">{e.name}</span>
+                      <Tag className="ml-auto shrink-0">{n} run</Tag>
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Snowflake className="size-3 shrink-0" aria-hidden="true" />
+                      <span className="truncate">{snapshotLabel(e.snapshotId)}</span>
+                      <span aria-hidden="true">·</span>
+                      <span className="shrink-0">{e.createdAt}</span>
                     </div>
                   </button>
                 </li>
@@ -173,17 +194,22 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
       {creating ? (
         <Panel title="新建实验">
           <div className="flex max-w-3xl flex-col gap-4">
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              名称
+            <div className="flex flex-col gap-1.5">
               <input
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                placeholder="例如：黄金集 · 提示词优化实验"
-                className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                placeholder="实验名称，例如：黄金集 · 提示词优化"
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
               />
-            </label>
+              {nameTaken ? (
+                <div className="flex items-center gap-1.5 text-xs text-warn">
+                  <AlertTriangle className="size-3.5" aria-hidden="true" />
+                  已存在同名实验，将创建为 <Mono className="font-semibold">{nextName}</Mono>
+                </div>
+              ) : null}
+            </div>
             <fieldset>
-              <legend className="mb-1.5 text-xs text-muted-foreground">快照（只读数据源）</legend>
+              <legend className="mb-1.5 text-xs text-muted-foreground">快照</legend>
               <div className="overflow-hidden rounded-md border">
                 <table className="w-full text-sm">
                   <thead className="border-b bg-muted/40">
@@ -220,7 +246,7 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
               </div>
             </fieldset>
             <fieldset>
-              <legend className="mb-1.5 text-xs text-muted-foreground">评分器（仅 published 可选）</legend>
+              <legend className="mb-1.5 text-xs text-muted-foreground">评分器</legend>
               <div className="flex flex-col gap-1.5">
                 {scorers.map((s) => {
                   const ok = s.status === 'published'
@@ -235,65 +261,60 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                         className="accent-primary rounded"
                       />
                       <span className="font-semibold text-xs">{s.name}</span>
-                      <Mono className="text-muted-foreground text-xs">{s.id}@v{s.version}</Mono>
-                      <span className="ml-auto flex gap-1">{s.outputs.map((o) => <Tag key={o} tone="primary"><Mono>{o}</Mono></Tag>)}</span>
+                      <span className="ml-auto flex flex-wrap gap-1">
+                        {s.outputs.map((o) => (
+                          <Tag key={o} tone="primary">{dimensions.find((d) => d.key === o)?.name ?? o}</Tag>
+                        ))}
+                      </span>
                       {!ok ? <Tag>draft</Tag> : null}
                     </label>
                   )
                 })}
               </div>
             </fieldset>
-            <div className="flex items-center gap-3 border-t pt-4">
-              <span className="font-mono text-[11px] text-muted-foreground">字段字典快照 {fieldDictVersion} · 已选 {draft.scorerIds.filter((id) => published.some((p) => p.id === id)).length} 个评分器</span>
-              <Btn variant="primary" className="ml-auto" disabled={!draft.scorerIds.length} onClick={create}>创建</Btn>
+            <div className="flex items-center justify-end border-t pt-4">
+              <Btn variant="primary" disabled={!draft.scorerIds.length} onClick={create}>创建</Btn>
             </div>
           </div>
         </Panel>
       ) : (
         <div className="flex min-w-0 flex-col gap-4">
           <Panel
-            title={<span className="flex items-center gap-2">{exp.name}<Mono className="text-muted-foreground">{exp.id}</Mono></span>}
+            title={
+              <span className="flex items-center gap-2">
+                {exp.name}
+                <Tag tone="primary" className="gap-1">
+                  <Snowflake className="size-3" aria-hidden="true" />
+                  {snapshotLabel(exp.snapshotId)}
+                </Tag>
+              </span>
+            }
             actions={
               <Btn variant="primary" size="sm" onClick={execute}>
                 <Play className="size-3.5" aria-hidden="true" />执行
               </Btn>
             }
           >
-            <dl className="grid grid-cols-2 gap-4 text-sm lg:grid-cols-4">
-              <div>
-                <dt className="text-xs text-muted-foreground">快照</dt>
-                <dd className="mt-1 flex items-center gap-1.5"><Snowflake className="size-3.5 text-primary" aria-hidden="true" /><Mono>{exp.snapshotId}</Mono></dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">字段字典</dt>
-                <dd className="mt-1 flex items-center gap-1.5">
-                  <Mono>{exp.fieldDictVersion}</Mono>
-                  {exp.fieldDictVersion !== fieldDictVersion ? <Tag tone="warn">非最新</Tag> : null}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">创建</dt>
-                <dd className="mt-1">{exp.createdBy} · <Mono className="text-muted-foreground">{exp.createdAt}</Mono></dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">配置</dt>
-                <dd className="mt-1 flex items-center gap-1 text-muted-foreground"><Lock className="size-3.5" aria-hidden="true" />创建后不可改</dd>
-              </div>
-            </dl>
+            <div className="flex flex-wrap items-center gap-2">
+              <Tag><Mono>{exp.fieldDictVersion}</Mono></Tag>
+              {exp.fieldDictVersion !== fieldDictVersion ? <Tag tone="warn">非最新</Tag> : null}
+              <Tag>{exp.createdBy} · {exp.createdAt}</Tag>
+              <span className="flex items-center text-muted-foreground" title="创建后不可修改">
+                <Lock className="size-3.5" aria-hidden="true" />
+                <span className="sr-only">创建后不可修改</span>
+              </span>
+            </div>
             <div className="mt-4 flex flex-col gap-2">
               {exp.scorerIds.map((id) => {
                 const s = scorers.find((x) => x.id === id)!
                 return (
                   <div key={id} className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2 bg-card">
                     <span className="text-sm font-medium">{s.name}</span>
-                    <Mono className="text-muted-foreground text-xs">{s.id}@v{s.version}</Mono>
-                    <div className="ml-auto flex items-center gap-3">
+                    <div className="ml-auto flex flex-wrap items-center gap-2">
                       {s.outputs.map((o) => (
-                        <div key={o} className="flex items-center gap-2">
-                          <Mono>{o}</Mono>
-                          <span className="text-xs text-muted-foreground">{dimensions.find((d) => d.key === o)?.name}</span>
-                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${(exp.weights[o] ?? 0) * 100}%` }} /></div>
-                          <Mono className="w-8 text-right text-muted-foreground">{exp.weights[o] ?? 0}</Mono>
+                        <div key={o} className="flex items-center gap-1.5">
+                          <Tag tone="primary">{dimensions.find((d) => d.key === o)?.name ?? o}</Tag>
+                          <Mono className="text-[11px] text-muted-foreground">×{exp.weights[o] ?? 0}</Mono>
                         </div>
                       ))}
                     </div>
