@@ -15,6 +15,8 @@ import {
   Cpu,
   PenTool,
   Server,
+  FileCheck2,
+  ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLines, useScope } from '@/lib/tenant-store'
@@ -53,7 +55,15 @@ function ScopeSwitcher() {
 
 const nav = [
   { group: 'L0 平台', items: [
-    { href: '/lines', label: '产线管理', icon: Building2 },
+    {
+      href: '/lines',
+      label: '产线管理',
+      icon: Building2,
+      children: [
+        { href: '/lines', label: '产线与 Agent 配置', icon: Building2 },
+        { href: '/lines/contract', label: '仿真契约注册台', icon: FileCheck2 },
+      ],
+    },
     { href: '/capabilities', label: '评测能力注册', icon: Cpu },
   ] },
   { group: 'L1 资产', items: [
@@ -98,24 +108,55 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <ul className="flex flex-col gap-0.5">
                 {g.items.map((item) => {
                   i += 1
-                  const active = pathname.startsWith(item.href)
+                  const isParentActive = pathname.startsWith(item.href)
                   const Icon = item.icon
+                  const hasChildren = Boolean(item.children?.length)
+
                   return (
-                    <li key={item.href}>
+                    <li key={item.href} className="flex flex-col gap-0.5">
                       <Link
                         href={item.href}
-                        aria-current={active ? 'page' : undefined}
+                        aria-current={pathname === item.href ? 'page' : undefined}
                         className={cn(
                           'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors',
-                          active
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                          pathname === item.href || (isParentActive && !hasChildren)
+                            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold'
                             : 'hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground',
                         )}
                       >
-                        <span className={cn('w-3 font-mono text-[10px]', active ? 'text-sidebar-primary' : 'text-sidebar-foreground/40')}>{i}</span>
+                        <span className={cn('w-3 font-mono text-[10px]', isParentActive ? 'text-sidebar-primary' : 'text-sidebar-foreground/40')}>{i}</span>
                         <Icon className="size-4 shrink-0" aria-hidden="true" />
-                        <span className="truncate">{item.label}</span>
+                        <span className="truncate flex-1">{item.label}</span>
+                        {hasChildren && (
+                          <ChevronDown className={cn('size-3.5 text-sidebar-foreground/40 transition-transform duration-200', isParentActive && 'rotate-180')} />
+                        )}
                       </Link>
+
+                      {/* 子导航展开 */}
+                      {hasChildren && isParentActive && (
+                        <ul className="ml-5 flex flex-col gap-0.5 border-l border-sidebar-border pl-2 my-0.5">
+                          {item.children!.map((child) => {
+                            const isChildActive = pathname === child.href
+                            const ChildIcon = child.icon
+                            return (
+                              <li key={child.href}>
+                                <Link
+                                  href={child.href}
+                                  className={cn(
+                                    'flex items-center gap-2 rounded px-2 py-1 text-xs transition-colors',
+                                    isChildActive
+                                      ? 'bg-sidebar-primary/10 text-sidebar-primary font-bold'
+                                      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground',
+                                  )}
+                                >
+                                  <ChildIcon className="size-3 shrink-0" />
+                                  <span className="truncate">{child.label}</span>
+                                </Link>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      )}
                     </li>
                   )
                 })}
