@@ -143,7 +143,7 @@ export type Dimension = {
   key: string
   name: string
   gtKey: string
-  scoreType: 'binary'
+  scoreType: 'binary' | 'scale_5' | 'scale_100' | 'custom_options'
   thresholds: { release: number; agreement: number; minSamples: number }
   enabled: boolean
 }

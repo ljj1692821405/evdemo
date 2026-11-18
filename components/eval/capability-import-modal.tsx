@@ -1,7 +1,25 @@
 'use client'
 
 import { useState } from 'react'
-import { Sparkles, ArrowRight, Check, X, Database, Pencil, Upload, Paperclip, Cable, Link2, Layers } from 'lucide-react'
+import {
+  Sparkles,
+  ArrowRight,
+  Check,
+  X,
+  Database,
+  Pencil,
+  Upload,
+  Paperclip,
+  Cable,
+  Plus,
+  Layers,
+  FileText,
+  ImageIcon,
+  Video,
+  Code2,
+  ListFilter,
+  CheckCircle2,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tag, Mono, Btn, Th, Td } from './primitives'
 import {
@@ -10,6 +28,7 @@ import {
   type CapabilityInputField,
   type ScorerRubricType,
   type RubricOption,
+  type DimensionTemplate,
 } from '@/lib/eval-capability-store'
 import { isValidFieldName, useFieldDict } from '@/lib/field-dict-store'
 import type { Dimension, Scorer } from '@/lib/mock-data'
@@ -26,10 +45,24 @@ type Rubric = {
   criteriaText?: string
 }
 
+type CustomDim = {
+  key: string
+  name: string
+  scoreType: ScorerRubricType
+  rubricText: string
+}
+
 const sources: { id: InputSource; label: string; icon: typeof Database }[] = [
   { id: 'field', label: '项目/字典字段', icon: Database },
   { id: 'text', label: '固定文本/参数', icon: Pencil },
   { id: 'file', label: '上传素材底料', icon: Upload },
+]
+
+const categoryFilters = [
+  { id: 'all', label: '全部' },
+  { id: 'nlp_quality', label: '文本评价', icon: FileText },
+  { id: 'multimodal_gen', label: '图片/视频评价', icon: ImageIcon },
+  { id: 'custom', label: '规则与AST', icon: Code2 },
 ]
 
 const NEW_FIELD = '__new__'
@@ -56,10 +89,20 @@ export function CapabilityImportModal({
   const { capabilities } = useCapabilityRegistry()
   const dict = useFieldDict()
 
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  // 4 步清晰心流：1.选能力 -> 2.选定/新增维度 -> 3.动态Input水管 -> 4.配置Rubric
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
+  const [catFilter, setCatFilter] = useState('all')
   const [selectedCapId, setSelectedCapId] = useState<string>(() => defaultSelectedCapId || capabilities[0]?.id || '')
 
   const currentCap = capabilities.find((c) => c.id === selectedCapId) || capabilities[0]
+
+  // 自定义新维度表单状态
+  const [customDims, setCustomDims] = useState<CustomDim[]>([])
+  const [isAddingDim, setIsAddingDim] = useState(false)
+  const [newDimKey, setNewDimKey] = useState('')
+  const [newDimName, setNewDimName] = useState('')
+  const [newDimType, setNewDimType] = useState<ScorerRubricType>('binary')
+  const [newDimRubric, setNewDimRubric] = useState('')
 
   const getInitData = (cap?: RegisteredCapability) => {
     const mappings: Record<string, InputMapping> = {}
@@ -84,11 +127,6 @@ export function CapabilityImportModal({
         weight: 1.0,
         promptInstruction: d.suggestedPrompt,
         criteriaText: d.defaultRubric,
-        customOptions: [
-          { key: 'A', label: '极佳', score: 5, tone: 'pass' },
-          { key: 'B', label: '合格', score: 4, tone: 'pass' },
-          { key: 'C', label: '不合格', score: 1, tone: 'fail' },
-        ],
       }
     })
     return {
@@ -116,6 +154,34 @@ export function CapabilityImportModal({
     setSelectedDims(data.dims)
     setMappings(data.mappings)
     setRubrics(data.rubrics)
+    setCustomDims([])
+  }
+
+  const handleAddCustomDim = () => {
+    if (!newDimKey.trim() || !newDimName.trim()) return
+    const key = newDimKey.trim().toLowerCase().replace(/[^a-z0-9_.]+/g, '_')
+    const added: CustomDim = {
+      key,
+      name: newDimName.trim(),
+      scoreType: newDimType,
+      rubricText: newDimRubric.trim() || '1分: 符合预期；0分: 不符合预期。',
+    }
+    setCustomDims((prev) => [...prev, added])
+    setSelectedDims((prev) => (prev.includes(key) ? prev : [...prev, key]))
+    setRubrics((prev) => ({
+      ...prev,
+      [key]: {
+        scoreType: newDimType,
+        threshold: newDimType === 'scale_5' ? 4.0 : 0.85,
+        weight: 1.0,
+        promptInstruction: `针对 ${added.name} 进行客观审核。`,
+        criteriaText: added.rubricText,
+      },
+    }))
+    setNewDimKey('')
+    setNewDimName('')
+    setNewDimRubric('')
+    setIsAddingDim(false)
   }
 
   const handleFile = (field: CapabilityInputField, file: File | undefined) => {
@@ -134,13 +200,26 @@ export function CapabilityImportModal({
   const handleFinishImport = () => {
     if (!currentCap || !mappingReady) return
 
+    const allDimTemplates = [
+      ...currentCap.supportedDimensions,
+      ...customDims.map((c) => ({
+        key: c.key,
+        name: c.name,
+        defaultScoreType: c.scoreType,
+        description: c.name,
+        suggestedPrompt: '',
+        defaultRubric: c.rubricText,
+        requiredInputs: [],
+      })),
+    ]
+
     const newDims: Dimension[] = selectedDims.map((dimKey) => {
-      const dimTpl = currentCap.supportedDimensions.find((d) => d.key === dimKey)
+      const dimTpl = allDimTemplates.find((d) => d.key === dimKey)
       return {
         key: dimKey,
         name: dimTpl?.name || dimKey,
-        gtKey: `gt_${dimKey.replace('.', '_')}`,
-        scoreType: 'binary',
+        gtKey: `gt_${dimKey.replace(/[^a-z0-9]+/g, '_')}`,
+        scoreType: rubrics[dimKey]?.scoreType || 'binary',
         thresholds: { release: rubrics[dimKey]?.threshold || 0.85, agreement: 0.85, minSamples: 10 },
         enabled: true,
       }
@@ -193,25 +272,34 @@ export function CapabilityImportModal({
     onClose()
   }
 
+  const filteredCaps = capabilities.filter((c) => {
+    if (catFilter === 'all') return true
+    if (catFilter === 'nlp_quality') return c.category === 'nlp_quality' || c.code.includes('llm')
+    if (catFilter === 'multimodal_gen') return c.category === 'multimodal_gen'
+    return c.category === 'custom'
+  })
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
       <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-xl border bg-card shadow-2xl">
+        {/* 头部 */}
         <div className="flex items-center justify-between border-b px-6 py-3.5">
           <div className="flex items-center gap-2">
             <Sparkles className="size-4 text-primary" aria-hidden="true" />
-            <h2 className="text-sm font-bold text-foreground">导入评测能力生成评分器</h2>
+            <h2 className="text-sm font-bold text-foreground">配置业务评分器</h2>
           </div>
           <button type="button" onClick={onClose} aria-label="关闭" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted">
             <X className="size-4" aria-hidden="true" />
           </button>
         </div>
 
-        {/* 步骤条 */}
-        <div className="grid grid-cols-3 border-b bg-muted/20 text-xs">
+        {/* 4 步清晰步骤条 */}
+        <div className="grid grid-cols-4 border-b bg-muted/20 text-xs">
           {[
-            { n: 1, label: '1. 选择底层能力' },
-            { n: 2, label: '2. 字段水管式映射与维度' },
-            { n: 3, label: '3. 评分标准 Rubric' },
+            { n: 1, label: '1. 选择评测能力' },
+            { n: 2, label: '2. 选定/新增评测维度' },
+            { n: 3, label: '3. 映射 Input (水管)' },
+            { n: 4, label: '4. 配置 Rubric' },
           ].map((st) => (
             <div
               key={st.n}
@@ -229,68 +317,180 @@ export function CapabilityImportModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 text-xs">
-          {/* 步骤 1：选择能力 */}
+          {/* 步骤 1：选择能力（带类型分类 Tab） */}
           {step === 1 && (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {capabilities.map((cap) => {
-                const isSelected = cap.id === currentCap?.id
-                return (
+            <div className="flex flex-col gap-3.5">
+              <div className="flex items-center gap-1.5">
+                {categoryFilters.map((cat) => (
                   <button
-                    key={cap.id}
+                    key={cat.id}
                     type="button"
-                    aria-pressed={isSelected}
-                    onClick={() => handleSelectCap(cap)}
+                    onClick={() => setCatFilter(cat.id)}
                     className={cn(
-                      'flex flex-col justify-between rounded-xl border p-4 text-left transition-all',
-                      isSelected ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'hover:border-primary/40 bg-card',
+                      'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                      catFilter === cat.id ? 'border-primary bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-muted',
                     )}
                   >
-                    <span className="block">
-                      <span className="flex items-center justify-between">
-                        <span className="font-bold text-sm text-foreground">{cap.name}</span>
-                        <Tag tone="primary">{cap.version}</Tag>
-                      </span>
-                      <Mono className="text-[10px] text-muted-foreground mt-0.5">{cap.code}</Mono>
-                      <span className="mt-2 block text-muted-foreground leading-relaxed text-xs">{cap.intro}</span>
-                    </span>
-
-                    <span className="mt-4 border-t pt-2.5 flex w-full items-center justify-between text-[11px]">
-                      <span className="text-muted-foreground">{cap.inputSchema.length} 输入参数 · {cap.supportedDimensions.length} 维度模板</span>
-                      {isSelected ? (
-                        <span className="flex items-center gap-1 font-semibold text-primary"><Check className="size-3.5" aria-hidden="true" /> 已选</span>
-                      ) : null}
-                    </span>
+                    {cat.label}
                   </button>
-                )
-              })}
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {filteredCaps.map((cap) => {
+                  const isSelected = cap.id === currentCap?.id
+                  return (
+                    <button
+                      key={cap.id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => handleSelectCap(cap)}
+                      className={cn(
+                        'flex flex-col justify-between rounded-xl border p-4 text-left transition-all',
+                        isSelected ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'hover:border-primary/40 bg-card',
+                      )}
+                    >
+                      <span className="block">
+                        <span className="flex items-center justify-between">
+                          <span className="font-bold text-sm text-foreground">{cap.name}</span>
+                          <Tag tone="primary">{cap.version}</Tag>
+                        </span>
+                        <Mono className="text-[10px] text-muted-foreground mt-0.5">{cap.code}</Mono>
+                      </span>
+
+                      <span className="mt-4 border-t pt-2.5 flex w-full items-center justify-between text-[11px]">
+                        <span className="text-muted-foreground">{cap.inputSchema.length} 输入参数 · {cap.supportedDimensions.length} 推荐维度</span>
+                        {isSelected ? (
+                          <span className="flex items-center gap-1 font-semibold text-primary"><Check className="size-3.5" aria-hidden="true" /> 已选</span>
+                        ) : null}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           )}
 
-          {/* 步骤 2：水管式字段映射 */}
+          {/* 步骤 2：选定与新增评测维度 */}
           {step === 2 && currentCap && (
             <div className="flex flex-col gap-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg bg-muted/30 p-3 border">
+              <div className="flex items-center justify-between rounded-lg bg-muted/30 p-3 border">
                 <div>
                   <div className="font-semibold text-foreground flex items-center gap-1.5">
-                    <Cable className="size-3.5 text-primary" />
-                    当前引用能力：{currentCap.name} ({currentCap.code})
+                    <Layers className="size-3.5 text-primary" />
+                    当前能力：{currentCap.name}
                   </div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5">
-                    产品经理通过字段对齐、固定值或上传物料完成输入绑定，系统自动驱动底层执行入口
-                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5 font-mono">{currentCap.code}</div>
                 </div>
-                <div className="w-full sm:w-64">
+                <div className="w-64">
                   <input
                     type="text"
                     placeholder="业务评分器名称"
                     value={scorerName}
                     onChange={(e) => setScorerName(e.target.value)}
-                    className="h-7.5 w-full rounded border border-input bg-card px-2.5 text-xs font-medium"
+                    className="h-8 w-full rounded border border-input bg-card px-2.5 text-xs font-medium"
                   />
                 </div>
               </div>
 
-              {/* 映射列表 */}
+              {/* 维度勾选与新增 */}
+              <div className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-foreground">推荐业务评测维度</span>
+                  <Btn size="sm" variant="outline" onClick={() => setIsAddingDim(true)}>
+                    <Plus className="size-3" />
+                    新增自定义维度
+                  </Btn>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {[...currentCap.supportedDimensions, ...customDims.map((c) => ({
+                    key: c.key,
+                    name: c.name,
+                    defaultScoreType: c.scoreType,
+                    description: '自定义业务维度',
+                    suggestedPrompt: '',
+                    defaultRubric: c.rubricText,
+                    requiredInputs: [],
+                  }))].map((dim) => {
+                    const checked = selectedDims.includes(dim.key)
+                    return (
+                      <label
+                        key={dim.key}
+                        className={cn(
+                          'flex items-start gap-2.5 rounded-lg border p-3 cursor-pointer transition-colors',
+                          checked ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'hover:bg-muted/20 bg-card',
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) =>
+                            setSelectedDims(e.target.checked ? [...selectedDims, dim.key] : selectedDims.filter((k) => k !== dim.key))
+                          }
+                          className="mt-0.5 rounded border-input accent-primary"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-foreground">{dim.name}</span>
+                            <Tag tone="primary" className="font-mono text-[10px]">{dim.defaultScoreType}</Tag>
+                          </div>
+                          <Mono className="text-[10px] text-muted-foreground mt-0.5">{dim.key}</Mono>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+
+                {/* 新增维度浮层表单 */}
+                {isAddingDim && (
+                  <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-accent/30 p-3 mt-1">
+                    <span className="font-semibold text-foreground">新增自定义维度</span>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <input
+                        type="text"
+                        placeholder="维度标识 (如: dim.custom_check)"
+                        value={newDimKey}
+                        onChange={(e) => setNewDimKey(e.target.value)}
+                        className="h-8 rounded border border-input bg-card px-2 font-mono text-xs"
+                      />
+                      <input
+                        type="text"
+                        placeholder="维度名称 (如: 画面细节真实感)"
+                        value={newDimName}
+                        onChange={(e) => setNewDimName(e.target.value)}
+                        className="h-8 rounded border border-input bg-card px-2 text-xs"
+                      />
+                      <select
+                        value={newDimType}
+                        onChange={(e) => setNewDimType(e.target.value as ScorerRubricType)}
+                        className="h-8 rounded border border-input bg-card px-2 text-xs"
+                      >
+                        <option value="binary">0/1 二元通过率</option>
+                        <option value="scale_5">1~5 连续打分</option>
+                        <option value="scale_100">0~100 百分制</option>
+                      </select>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="默认判定标准（如：1分通过，0分不通过）"
+                      value={newDimRubric}
+                      onChange={(e) => setNewDimRubric(e.target.value)}
+                      className="h-8 rounded border border-input bg-card px-2 text-xs"
+                    />
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <Btn size="sm" variant="ghost" onClick={() => setIsAddingDim(false)}>取消</Btn>
+                      <Btn size="sm" variant="primary" onClick={handleAddCustomDim} disabled={!newDimKey.trim() || !newDimName.trim()}>确定添加</Btn>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 步骤 3：动态水管式映射 (Data Pipe) */}
+          {step === 3 && currentCap && (
+            <div className="flex flex-col gap-3.5">
               <div className="overflow-hidden rounded-lg border">
                 <table className="w-full table-fixed text-xs">
                   <thead className="bg-muted/40 border-b">
@@ -318,7 +518,6 @@ export function CapabilityImportModal({
                               {field.required ? <Tag tone="warn">必填</Tag> : <Tag tone="neutral">可选</Tag>}
                             </div>
                             <div className="mt-1 text-[11px] text-muted-foreground">{field.label}</div>
-                            {field.description ? <div className="mt-0.5 text-[10px] text-muted-foreground/80 line-clamp-1">{field.description}</div> : null}
                           </Td>
 
                           <Td className="text-center pt-3">
@@ -445,58 +644,29 @@ export function CapabilityImportModal({
                   </tbody>
                 </table>
               </div>
-
-              {/* 勾选挂载的维度 */}
-              <fieldset className="flex flex-col gap-1.5 border-t pt-3">
-                <legend className="font-semibold text-foreground mb-1">选择评分器输出维度 (Dimensions)</legend>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {currentCap.supportedDimensions.map((dim) => {
-                    const checked = selectedDims.includes(dim.key)
-                    return (
-                      <label
-                        key={dim.key}
-                        className={cn(
-                          'flex items-start gap-2.5 rounded-lg border p-3 cursor-pointer transition-colors',
-                          checked ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'hover:bg-muted/20 bg-card',
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) =>
-                            setSelectedDims(e.target.checked ? [...selectedDims, dim.key] : selectedDims.filter((k) => k !== dim.key))
-                          }
-                          className="mt-0.5 rounded border-input accent-primary"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <Mono className="font-semibold text-primary">{dim.key}</Mono>
-                            <span className="font-medium text-foreground">{dim.name}</span>
-                          </div>
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {dim.requiredInputs.map((name) => (
-                              <Tag key={name} tone={isComplete(mappings[name]) ? 'pass' : 'neutral'} className="font-mono text-[9px]">
-                                {name}: {isComplete(mappings[name]) ? '已映射' : '待绑定'}
-                              </Tag>
-                            ))}
-                          </div>
-                        </div>
-                      </label>
-                    )
-                  })}
-                </div>
-              </fieldset>
             </div>
           )}
 
-          {/* 步骤 3：Rubric 规则配置 */}
-          {step === 3 && currentCap && (
+          {/* 步骤 4：Rubric 评分标准配置 */}
+          {step === 4 && currentCap && (
             <div className="flex flex-col gap-3.5">
               {selectedDims.map((dimKey) => {
-                const dimTpl = currentCap.supportedDimensions.find((d) => d.key === dimKey)
+                const dimTpl = [
+                  ...currentCap.supportedDimensions,
+                  ...customDims.map((c) => ({
+                    key: c.key,
+                    name: c.name,
+                    defaultScoreType: c.scoreType,
+                    description: '',
+                    suggestedPrompt: '',
+                    defaultRubric: c.rubricText,
+                    requiredInputs: [],
+                  })),
+                ].find((d) => d.key === dimKey)
+
                 const rubric: Rubric = rubrics[dimKey] || {
-                  scoreType: 'scale_5',
-                  threshold: 4.0,
+                  scoreType: dimTpl?.defaultScoreType || 'binary',
+                  threshold: 0.85,
                   weight: 1.0,
                   promptInstruction: dimTpl?.suggestedPrompt || '',
                   criteriaText: dimTpl?.defaultRubric || '',
@@ -540,7 +710,7 @@ export function CapabilityImportModal({
                       </label>
 
                       <label className="flex flex-col gap-1">
-                        <span className="font-medium text-foreground">业务补充提示词 (Instruction)</span>
+                        <span className="font-medium text-foreground">业务补充指令 (Instruction)</span>
                         <textarea
                           rows={3}
                           value={rubric.promptInstruction || ''}
@@ -587,19 +757,24 @@ export function CapabilityImportModal({
 
           <div className="flex items-center gap-2">
             {step > 1 && (
-              <Btn size="sm" variant="outline" onClick={() => setStep((s) => (s - 1) as 1 | 2)}>
+              <Btn variant="outline" size="sm" onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3 | 4)}>
                 上一步
               </Btn>
             )}
-            {step < 3 ? (
-              <Btn size="sm" variant="primary" disabled={step === 2 && !mappingReady} onClick={() => setStep((s) => (s + 1) as 2 | 3)}>
+            {step < 4 ? (
+              <Btn
+                variant="primary"
+                size="sm"
+                onClick={() => setStep((s) => (s + 1) as 1 | 2 | 3 | 4)}
+                disabled={step === 2 && selectedDims.length === 0}
+              >
                 下一步
-                <ArrowRight className="size-3.5" aria-hidden="true" />
+                <ArrowRight className="size-3" aria-hidden="true" />
               </Btn>
             ) : (
-              <Btn size="sm" variant="primary" onClick={handleFinishImport} disabled={!mappingReady}>
+              <Btn variant="primary" size="sm" onClick={handleFinishImport} disabled={!mappingReady}>
                 <Check className="size-3.5" aria-hidden="true" />
-                完成导入并生成评分器
+                完成配置并生成评分器
               </Btn>
             )}
           </div>

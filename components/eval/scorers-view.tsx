@@ -155,8 +155,8 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
 
         <div className="flex items-center gap-2">
           <Btn variant="primary" size="sm" onClick={() => setImportModalOpen(true)}>
-            <Download className="size-3.5" />
-            导入评测能力生成评分器
+            <Plus className="size-3.5" />
+            新建业务评分器 (选能力/配维度)
           </Btn>
           <a href="/capabilities">
             <Btn variant="outline" size="sm">

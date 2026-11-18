@@ -1,13 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronLeft, ChevronRight, MessageSquare, Bot, Wrench, Gavel, FileDiff, Zap, Check, X, ScrollText, GitCompareArrows, ListChecks, MessageSquarePlus } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, MessageSquare, Bot, Wrench, Gavel, FileDiff, Zap, Check, X, ScrollText, GitCompareArrows, ListChecks, MessageSquarePlus, LayoutTemplate, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dimensions, reviewSchema, reviewTurns as allTurns, type Verdict } from '@/lib/mock-data'
 import { agreementStats, pct } from '@/lib/stats'
 import { Tag, VerdictBadge, Mono, Progress, Btn } from './primitives'
 import { EvidenceView } from './evidence-view'
 import { WorkspaceDiff } from './workspace-diff'
+import { useAnnotationTemplateStore } from '@/lib/annotation-template-store'
 
 const key = (c: string, t: number, d: string) => `${c}#${t}#${d}`
 
@@ -23,6 +24,10 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
   const [expanded, setExpanded] = useState(false)
   const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({})
   const noteInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  const { templates, activeTemplate } = useAnnotationTemplateStore()
+  const [selectedTplId, setSelectedTplId] = useState<string>(activeTemplate?.id || templates[0]?.id || '')
+  const currentTpl = templates.find((t) => t.id === selectedTplId) || activeTemplate
 
   const turn = reviewTurns[idx]
   const turnKey = `${turn.caseId}#${turn.turnNo}`
@@ -149,6 +154,27 @@ export function ReviewBoard({ dimKeys }: { dimKeys: string[] }) {
             ) : (
               <Tag>turn 1/1</Tag>
             )}
+
+            {/* 标注模板联动切换 */}
+            <div className="flex items-center gap-1.5 ml-2 border-l pl-3">
+              <LayoutTemplate className="size-3.5 text-primary" />
+              <select
+                aria-label="使用标注模板"
+                value={currentTpl?.id}
+                onChange={(e) => setSelectedTplId(e.target.value)}
+                className="h-7 rounded-md border border-input bg-card px-2 font-mono text-xs text-foreground font-medium"
+              >
+                {templates.map((tpl) => (
+                  <option key={tpl.id} value={tpl.id}>
+                    模板：{tpl.name} ({tpl.version})
+                  </option>
+                ))}
+              </select>
+              <a href="/annotation" className="text-[11px] text-muted-foreground hover:text-primary inline-flex items-center gap-0.5">
+                设计器
+                <ArrowRight className="size-2.5" />
+              </a>
+            </div>
           </div>
           <div className="flex items-center gap-1">
             <button
