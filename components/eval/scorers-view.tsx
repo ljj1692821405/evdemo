@@ -74,7 +74,8 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
   const [importModalOpen, setImportModalOpen] = useState(!!initialImportCapId)
   const [showFullPromptPreview, setShowFullPromptPreview] = useState(false)
 
-  // 临时调试台状态（绑定 Case 测试打分，结果不保存）
+  // 调试台状态（快速单条模式 vs 详细门禁试跑模式）
+  const [debugMode, setDebugMode] = useState<'quick' | 'detailed'>('quick')
   const [testCaseId, setTestCaseId] = useState<string>(goldenCases[0]?.id || '')
   const [isDebugging, setIsDebugging] = useState(false)
   const [debugResult, setDebugResult] = useState<{
@@ -428,78 +429,145 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                     </div>
                   </Field>
 
-                  {/* 调试台 (运行试跑与Case选择同行) */}
-                  <Field label="单条 Case 快速调试台">
+                  {/* 调试台 (包含快速单条模式与详细门禁试跑模式) */}
+                  <Field label="评分器调试台 (双模式)">
                     <div className="flex flex-col gap-2.5 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-muted-foreground shrink-0">Case:</span>
-                        <select
-                          value={testCaseId}
-                          onChange={(e) => {
-                            setTestCaseId(e.target.value)
-                            setDebugResult(null)
-                          }}
-                          className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 font-mono text-xs text-foreground font-semibold"
-                        >
-                          {goldenCases.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.id} · {c.query[0]?.slice(0, 24) || '测试样本'}...
-                            </option>
-                          ))}
-                        </select>
+                      {/* 模式切换 Tab */}
+                      <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+                        <div className="flex items-center gap-1 rounded-md border border-input bg-card p-0.5 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setDebugMode('quick')}
+                            className={cn(
+                              'flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold transition-colors',
+                              debugMode === 'quick' ? 'bg-primary text-primary-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
+                            )}
+                          >
+                            <Play className="size-3" />
+                            快速单条模式
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDebugMode('detailed')}
+                            className={cn(
+                              'flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold transition-colors',
+                              debugMode === 'detailed' ? 'bg-primary text-primary-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
+                            )}
+                          >
+                            <FlaskConical className="size-3" />
+                            详细试跑模式 (门禁校验)
+                          </button>
+                        </div>
 
-                        <Btn
-                          size="sm"
-                          variant="primary"
-                          disabled={isDebugging}
-                          className="shrink-0 h-8"
-                          onClick={() => {
-                            setIsDebugging(true)
-                            setTimeout(() => {
-                              setIsDebugging(false)
-                              setDebugResult({
-                                score: 1,
-                                pass: true,
-                                evidence: `[调试样例 ${testCaseId}] 经裁判客观审计：Agent 先行下发澄清卡确认诉求，在用户选择后再精准写回文件，全流程符合业务合规准绳。`,
-                                latencyMs: 890,
-                                timestamp: '刚刚',
-                              })
-                            }, 500)
-                          }}
-                        >
-                          <Play className="size-3" />
-                          {isDebugging ? '试跑中...' : '运行试跑'}
-                        </Btn>
+                        <Tag tone={t === 'passed' ? 'pass' : 'neutral'} className="font-mono text-[10px]">
+                          {t === 'passed' ? '门禁校验通过 ✓' : '未完成门禁'}
+                        </Tag>
                       </div>
 
-                      {/* 调试返回结果 */}
-                      {debugResult && (
-                        <div className="flex flex-col gap-2 rounded-lg border border-pass/30 bg-card p-3 shadow-2xs">
-                          <div className="flex items-center justify-between border-b pb-1.5">
-                            <span className="flex items-center gap-1.5 font-bold text-xs text-pass">
-                              <CheckCircle2 className="size-3.5" />
-                              试跑判定通过 (Pass)
-                            </span>
-                            <span className="font-mono text-[10px] text-muted-foreground">
-                              耗时 {debugResult.latencyMs}ms · 临时调试不存库
-                            </span>
+                      {/* 模式 A：快速单条模式 (同行 Case 选择 + 试跑) */}
+                      {debugMode === 'quick' ? (
+                        <div className="flex flex-col gap-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-muted-foreground shrink-0">Case:</span>
+                            <select
+                              value={testCaseId}
+                              onChange={(e) => {
+                                setTestCaseId(e.target.value)
+                                setDebugResult(null)
+                              }}
+                              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 font-mono text-xs text-foreground font-semibold"
+                            >
+                              {goldenCases.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.id} · {c.query[0]?.slice(0, 24) || '测试样本'}...
+                                </option>
+                              ))}
+                            </select>
+
+                            <Btn
+                              size="sm"
+                              variant="primary"
+                              disabled={isDebugging}
+                              className="shrink-0 h-8"
+                              onClick={() => {
+                                setIsDebugging(true)
+                                setTimeout(() => {
+                                  setIsDebugging(false)
+                                  setDebugResult({
+                                    score: 1,
+                                    pass: true,
+                                    evidence: `[调试样例 ${testCaseId}] 经裁判客观审计：Agent 先行下发澄清卡确认诉求，在用户选择后再精准写回文件，全流程符合业务合规准绳。`,
+                                    latencyMs: 890,
+                                    timestamp: '刚刚',
+                                  })
+                                }, 500)
+                              }}
+                            >
+                              <Play className="size-3" />
+                              {isDebugging ? '试跑中...' : '运行试跑'}
+                            </Btn>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div className="rounded bg-muted/40 p-1.5">
-                              <span className="text-muted-foreground text-[10px]">score 判定分：</span>
-                              <span className="font-mono font-bold text-foreground ml-1">{debugResult.score}</span>
+                          {/* 快速调试返回结果 */}
+                          {debugResult && (
+                            <div className="flex flex-col gap-2 rounded-lg border border-pass/30 bg-card p-3 shadow-2xs">
+                              <div className="flex items-center justify-between border-b pb-1.5">
+                                <span className="flex items-center gap-1.5 font-bold text-xs text-pass">
+                                  <CheckCircle2 className="size-3.5" />
+                                  试跑判定通过 (Pass)
+                                </span>
+                                <span className="font-mono text-[10px] text-muted-foreground">
+                                  耗时 {debugResult.latencyMs}ms · 临时调试不存库
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="rounded bg-muted/40 p-1.5">
+                                  <span className="text-muted-foreground text-[10px]">score 判定分：</span>
+                                  <span className="font-mono font-bold text-foreground ml-1">{debugResult.score}</span>
+                                </div>
+                                <div className="rounded bg-muted/40 p-1.5">
+                                  <span className="text-muted-foreground text-[10px]">pass 状态：</span>
+                                  <span className="font-mono font-bold text-pass ml-1">TRUE</span>
+                                </div>
+                              </div>
+
+                              <div className="rounded bg-muted/30 p-2 text-[11px] leading-relaxed text-foreground">
+                                <span className="font-bold text-muted-foreground block mb-0.5">evidence (证据说明)：</span>
+                                <p>{debugResult.evidence}</p>
+                              </div>
                             </div>
-                            <div className="rounded bg-muted/40 p-1.5">
-                              <span className="text-muted-foreground text-[10px]">pass 状态：</span>
-                              <span className="font-mono font-bold text-pass ml-1">TRUE</span>
+                          )}
+                        </div>
+                      ) : (
+                        /* 模式 B：详细试跑模式 (多样例回归 + AST 门禁检测) */
+                        <div className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-bold text-xs text-foreground flex items-center gap-1.5">
+                                <FlaskConical className="size-3.5 text-primary" />
+                                详细试跑实验室 (Trial Lab)
+                              </div>
+                              <span className="text-[11px] text-muted-foreground">执行 3 单元样本回归与 AST 静态语法树门禁校验</span>
                             </div>
+
+                            <Btn size="sm" variant="primary" onClick={() => setLab(true)}>
+                              <FlaskConical className="size-3" />
+                              开启详细试跑
+                            </Btn>
                           </div>
 
-                          <div className="rounded bg-muted/30 p-2 text-[11px] leading-relaxed text-foreground">
-                            <span className="font-bold text-muted-foreground block mb-0.5">evidence (证据说明)：</span>
-                            <p>{debugResult.evidence}</p>
-                          </div>
+                          {t === 'passed' ? (
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1 border-t">
+                              <Tag tone="pass" className="gap-1"><ShieldCheck className="size-3" aria-hidden="true" />AST 门禁已通过</Tag>
+                              <Tag tone="pass">import 语法合规 ✓</Tag>
+                              <Tag tone="pass">output_schema 校验通过 ✓</Tag>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-muted-foreground pt-1 border-t">
+                              提示：发布前需在详细试跑模式中完成至少一次回归门禁校验。
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -613,13 +681,10 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                         <Tag tone="pass">output_schema ✓</Tag>
                       </div>
                     ) : null}
-                    <div className="ml-auto flex gap-2">
-                      <Btn onClick={() => setLab(true)}>
-                        <FlaskConical className="size-4" aria-hidden="true" />
-                        试跑
-                      </Btn>
+                    <div className="ml-auto flex items-center gap-2">
                       <Btn variant="primary" disabled={t !== 'passed'} onClick={() => update({ status: 'published' })}>
-                        <Upload className="size-4" aria-hidden="true" />发布
+                        <Upload className="size-4" aria-hidden="true" />
+                        发布评分器
                       </Btn>
                     </div>
                   </>
