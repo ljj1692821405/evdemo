@@ -18,9 +18,14 @@ import {
   Eye,
   FileText,
   Sparkles,
+  Play,
+  RotateCcw,
+  Sliders,
+  CheckCircle2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
+import { goldenCases } from '@/lib/golden-seed'
 import { useDimensions, useFieldDict, useScorers } from '@/lib/field-dict-store'
 import { useScope } from '@/lib/tenant-store'
 import { useAgentTools } from '@/lib/capability-store'
@@ -68,6 +73,17 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
   const [trial, setTrial] = useState<Record<string, Trial>>({})
   const [importModalOpen, setImportModalOpen] = useState(!!initialImportCapId)
   const [showFullPromptPreview, setShowFullPromptPreview] = useState(false)
+
+  // 临时调试台状态（绑定 Case 测试打分，结果不保存）
+  const [testCaseId, setTestCaseId] = useState<string>(goldenCases[0]?.id || '')
+  const [isDebugging, setIsDebugging] = useState(false)
+  const [debugResult, setDebugResult] = useState<{
+    score: number
+    pass: boolean
+    evidence: string
+    latencyMs: number
+    timestamp: string
+  } | null>(null)
 
   const s = list.find((x) => x.id === sel) || list[0]
   const locked = s?.status === 'published'
@@ -323,7 +339,7 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                     </Btn>
                   </div>
 
-                  <Field label="输出维度">
+                  <Field label="绑定维度">
                     <div className="flex flex-wrap gap-1.5 rounded-lg border border-border bg-transparent p-2.5">
                       {s.outputs.map((o) => {
                         const d = dims.find((x) => x.key === o)
@@ -389,6 +405,115 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                       <Tag><Mono>{s.evidenceScript}</Mono></Tag>
                     </Field>
                   ) : null}
+
+                  {/* 预期输出字段 (Expected Output Schema) */}
+                  <Field label="预期输出字段 (Output Contract)">
+                    <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-transparent p-2.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-0.5 text-xs font-mono font-bold text-foreground">
+                          <span className="size-1.5 rounded-full bg-pass" />
+                          score
+                          <Tag tone="pass" className="font-mono text-[9px] px-1">0/1</Tag>
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-0.5 text-xs font-mono font-bold text-foreground">
+                          <span className="size-1.5 rounded-full bg-pass" />
+                          pass
+                          <Tag tone="pass" className="font-mono text-[9px] px-1">bool</Tag>
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-0.5 text-xs font-mono font-bold text-foreground">
+                          <span className="size-1.5 rounded-full bg-primary" />
+                          evidence
+                          <Tag tone="primary" className="font-mono text-[9px] px-1">string</Tag>
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-0.5 text-xs font-mono font-bold text-foreground">
+                          <span className="size-1.5 rounded-full bg-warn" />
+                          flaw_type
+                          <Tag tone="warn" className="font-mono text-[9px] px-1">enum?</Tag>
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        裁判执行后严格按 JSON Schema 输出得分、通过判定与证据链理由
+                      </span>
+                    </div>
+                  </Field>
+
+                  {/* 调试台 (支持绑定任意一条 Case 尝试，结果不保存) */}
+                  <Field label="单条 Case 快速调试台 (试跑不保存)">
+                    <div className="flex flex-col gap-2.5 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-muted-foreground">绑定样本 Case:</span>
+                          <select
+                            value={testCaseId}
+                            onChange={(e) => {
+                              setTestCaseId(e.target.value)
+                              setDebugResult(null)
+                            }}
+                            className="h-7.5 rounded-md border border-input bg-card px-2 font-mono text-xs text-foreground font-semibold"
+                          >
+                            {goldenCases.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.id} · {c.query[0]?.slice(0, 22) || '测试样本'}...
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <Btn
+                          size="sm"
+                          variant="primary"
+                          disabled={isDebugging}
+                          onClick={() => {
+                            setIsDebugging(true)
+                            setTimeout(() => {
+                              setIsDebugging(false)
+                              setDebugResult({
+                                score: 1,
+                                pass: true,
+                                evidence: `[调试样例 ${testCaseId}] 经裁判客观审计：Agent 先行下发澄清卡确认诉求，在用户选择后再精准写回文件，全流程符合业务合规准绳。`,
+                                latencyMs: 890,
+                                timestamp: '刚刚',
+                              })
+                            }, 500)
+                          }}
+                        >
+                          <Play className="size-3" />
+                          {isDebugging ? '裁判打分中...' : '运行试跑'}
+                        </Btn>
+                      </div>
+
+                      {/* 调试返回结果 */}
+                      {debugResult && (
+                        <div className="flex flex-col gap-2 rounded-lg border border-pass/30 bg-card p-3 shadow-2xs">
+                          <div className="flex items-center justify-between border-b pb-1.5">
+                            <span className="flex items-center gap-1.5 font-bold text-xs text-pass">
+                              <CheckCircle2 className="size-3.5" />
+                              试跑判定通过 (Pass)
+                            </span>
+                            <span className="font-mono text-[10px] text-muted-foreground">
+                              耗时 {debugResult.latencyMs}ms · 临时调试不存库
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="rounded bg-muted/40 p-1.5">
+                              <span className="text-muted-foreground text-[10px]">score 判定分：</span>
+                              <span className="font-mono font-bold text-foreground ml-1">{debugResult.score}</span>
+                            </div>
+                            <div className="rounded bg-muted/40 p-1.5">
+                              <span className="text-muted-foreground text-[10px]">pass 状态：</span>
+                              <span className="font-mono font-bold text-pass ml-1">TRUE</span>
+                            </div>
+                          </div>
+
+                          <div className="rounded bg-muted/30 p-2 text-[11px] leading-relaxed text-foreground">
+                            <span className="font-bold text-muted-foreground block mb-0.5">evidence (证据说明)：</span>
+                            <p>{debugResult.evidence}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </Field>
                 </div>
 
                 <div className="flex flex-col gap-4">
