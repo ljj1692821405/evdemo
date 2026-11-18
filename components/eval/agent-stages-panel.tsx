@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { GitBranch, Snowflake, Check, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { GitBranch, Save, Check, X, ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tag, Mono, Btn } from './primitives'
 import { useStages } from '@/lib/stage-store'
@@ -12,7 +12,7 @@ import type { Agent } from '@/lib/tenant-store'
 const inputCls = 'h-8 rounded-md border border-input bg-background px-2 text-sm'
 
 export function AgentStagesPanel({ agent }: { agent: Agent }) {
-  const { stages, currentStage, createStage, freezeConfigVersion } = useStages(agent.id)
+  const { stages, currentStage, createStage, freezeConfigVersion, removeConfigVersion } = useStages(agent.id)
   const { assets, currentOf } = useCapabilities()
   const [naming, setNaming] = useState(false)
   const [name, setName] = useState('')
@@ -65,8 +65,8 @@ export function AgentStagesPanel({ agent }: { agent: Agent }) {
         </div>
         <div className="flex items-center gap-2">
           <Btn size="sm" onClick={freeze} disabled={!currentStage}>
-            <Snowflake className="size-3.5" aria-hidden="true" />
-            冻结配置版本
+            <Save className="size-3.5" aria-hidden="true" />
+            保存配置版本
           </Btn>
           <Btn size="sm" variant="outline" onClick={() => setNaming((v) => !v)}>
             开启新阶段
@@ -146,17 +146,28 @@ export function AgentStagesPanel({ agent }: { agent: Agent }) {
                           <th className="w-36 py-1 text-left font-medium">被测模型</th>
                           <th className="w-32 py-1 text-left font-medium">能力</th>
                           <th className="py-1 text-right font-medium">快照</th>
+                          <th className="w-8 py-1"><span className="sr-only">操作</span></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/60">
                         {[...stage.configVersions].reverse().map((cv) => (
-                          <tr key={cv.id}>
+                          <tr key={cv.id} className="group">
                             <td className="py-1.5"><Mono className="text-muted-foreground">{cv.seq}</Mono></td>
                             <td className="py-1.5"><Mono className="font-semibold">{cv.configVersion}</Mono></td>
                             <td className="py-1.5"><Mono className="text-muted-foreground">{cv.frozenAt}</Mono></td>
                             <td className="py-1.5"><Mono className="text-muted-foreground">{cv.targetModel}</Mono></td>
                             <td className="py-1.5 text-muted-foreground">{cv.skillVersionRefs.length} Skill · {cv.toolVersionRefs.length} Tool</td>
                             <td className="py-1.5 text-right"><Mono>{cv.snapshotIds.length}</Mono></td>
+                            <td className="py-1.5 text-right">
+                              <button
+                                type="button"
+                                onClick={() => removeConfigVersion(cv.id)}
+                                aria-label={`删除配置版本 ${cv.configVersion}`}
+                                className="inline-flex size-6 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-opacity hover:bg-fail-soft hover:text-fail focus-visible:opacity-100 group-hover:opacity-100"
+                              >
+                                <Trash2 className="size-3.5" aria-hidden="true" />
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>

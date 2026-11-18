@@ -158,10 +158,24 @@ export function useStages(agentId?: string) {
     [setAll],
   )
 
+  const removeConfigVersion = useCallback(
+    (configVersionId: string) => {
+      setAll((prev) =>
+        prev.map((s) => ({
+          ...s,
+          configVersions: s.configVersions
+            .filter((cv) => cv.id !== configVersionId)
+            .map((cv, i) => ({ ...cv, seq: i + 1 })),
+        })),
+      )
+    },
+    [setAll],
+  )
+
   const findStage = (id?: string) => (id ? all.find((s) => s.id === id) : undefined)
   const findConfigVersion = (id?: string) =>
     id ? all.flatMap((s) => s.configVersions).find((cv) => cv.id === id) : undefined
   const stageOfConfigVersion = (id?: string) => (id ? all.find((s) => s.configVersions.some((cv) => cv.id === id)) : undefined)
 
-  return { stages, allStages: all, currentStage, createStage, freezeConfigVersion, attachSnapshot, findStage, findConfigVersion, stageOfConfigVersion }
+  return { stages, allStages: all, currentStage, createStage, freezeConfigVersion, removeConfigVersion, attachSnapshot, findStage, findConfigVersion, stageOfConfigVersion }
 }

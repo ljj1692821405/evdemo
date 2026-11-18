@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowRight, Boxes, Plus, Puzzle, Wrench } from 'lucide-react'
+import { ArrowRight, Boxes, Plus, Puzzle, Wrench, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   diffItems,
@@ -184,8 +184,8 @@ export function CapabilityPanel({ agentId, agentCode }: { agentId: string; agent
               <p className="py-8 text-center text-sm text-muted-foreground">尚未登记任何 Skill / Tool</p>
             ) : (
               <div className="grid gap-3 xl:grid-cols-2">
-                <AssetList title="Skill" icon={Puzzle} items={skills} onOpen={setOpenAsset} />
-                <AssetList title="Tool" icon={Wrench} items={tools} onOpen={setOpenAsset} />
+                <AssetList title="Skill" icon={Puzzle} items={skills} onOpen={setOpenAsset} onDelete={isCurrent ? store.detachAsset : undefined} />
+                <AssetList title="Tool" icon={Wrench} items={tools} onOpen={setOpenAsset} onDelete={isCurrent ? store.detachAsset : undefined} />
               </div>
             )}
           </div>
@@ -201,7 +201,58 @@ export function CapabilityPanel({ agentId, agentCode }: { agentId: string; agent
   )
 }
 
-function AssetList({ title, icon: Icon, items, onOpen }: { title: string; icon: typeof Puzzle; items: ResolvedItem[]; onOpen: (id: string) => void }) {
+function InlineDelete({ label, onConfirm }: { label: string; onConfirm: () => void }) {
+  const [confirming, setConfirming] = useState(false)
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          setConfirming(true)
+        }}
+        aria-label={`删除 ${label}`}
+        className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/40 opacity-0 transition-opacity hover:bg-fail-soft hover:text-fail focus-visible:opacity-100 group-hover:opacity-100"
+      >
+        <Trash2 className="size-3.5" aria-hidden="true" />
+      </button>
+    )
+  }
+  return (
+    <span className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={onConfirm}
+        className="inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-md bg-fail px-2 text-[11px] font-medium text-primary-foreground hover:bg-fail/90"
+      >
+        <Trash2 className="size-3" aria-hidden="true" />
+        删除
+      </button>
+      <button
+        type="button"
+        onClick={() => setConfirming(false)}
+        aria-label="取消"
+        className="flex size-7 items-center justify-center rounded-md border bg-card text-muted-foreground hover:bg-muted"
+      >
+        <X className="size-3" aria-hidden="true" />
+      </button>
+    </span>
+  )
+}
+
+function AssetList({
+  title,
+  icon: Icon,
+  items,
+  onOpen,
+  onDelete,
+}: {
+  title: string
+  icon: typeof Puzzle
+  items: ResolvedItem[]
+  onOpen: (id: string) => void
+  onDelete?: (asset: ResolvedItem['asset']) => void
+}) {
   return (
     <div className="rounded-md border">
       <h4 className="flex items-center gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
@@ -214,8 +265,8 @@ function AssetList({ title, icon: Icon, items, onOpen }: { title: string; icon: 
         {items.map(({ asset, ver }) => {
           const latest = asset.versions.at(-1)!.version
           return (
-            <li key={asset.id}>
-              <button type="button" onClick={() => onOpen(asset.id)} className="flex w-full flex-col gap-1 border-b px-3 py-2.5 text-left last:border-b-0 hover:bg-muted/60">
+            <li key={asset.id} className="group flex items-center gap-1 border-b pr-2 last:border-b-0">
+              <button type="button" onClick={() => onOpen(asset.id)} className="flex min-w-0 flex-1 flex-col gap-1 px-3 py-2.5 text-left hover:bg-muted/60">
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{asset.name}</span>
                   <Mono className="text-muted-foreground">{asset.code}</Mono>
@@ -226,6 +277,7 @@ function AssetList({ title, icon: Icon, items, onOpen }: { title: string; icon: 
                 <span className="line-clamp-1 text-xs text-muted-foreground">{ver.intro}</span>
                 {ver.remark ? <span className="line-clamp-1 text-[11px] text-muted-foreground/80">备注：{ver.remark}</span> : null}
               </button>
+              {onDelete ? <InlineDelete label={asset.code} onConfirm={() => onDelete(asset)} /> : null}
             </li>
           )
         })}
