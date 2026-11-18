@@ -411,7 +411,11 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                               disabled={locked}
                               aria-pressed={on}
                               onClick={() => update({ inputFields: on ? s.inputFields.filter((x) => x !== f.logicalName) : [...s.inputFields, f.logicalName] })}
-                              className={cn('flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1.5 text-left', on ? 'border-primary/40 bg-accent/50' : 'border-transparent hover:bg-muted', locked && 'cursor-not-allowed')}
+                              className={cn(
+                                'flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-all',
+                                on ? 'border-primary/50 bg-primary/5 ring-1 ring-primary/20 shadow-2xs' : 'border-border bg-card/60 hover:border-primary/40 hover:bg-muted/50',
+                                locked && 'cursor-not-allowed',
+                              )}
                             >
                               {on ? <X className="size-3 text-muted-foreground" aria-hidden="true" /> : <Plus className="size-3 text-muted-foreground" aria-hidden="true" />}
                               <div className="flex flex-col items-start min-w-0">
