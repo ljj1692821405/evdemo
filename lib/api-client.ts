@@ -9,7 +9,10 @@ export interface ApiResponse<T = any> {
 }
 
 export interface LLMChatRequest {
-  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+  messages: Array<{
+    role: 'system' | 'user' | 'assistant'
+    content: string | Array<{ type: 'text' | 'image_url'; text?: string; image_url?: { url: string } }>
+  }>
   model?: string
   temperature?: number
   stream?: boolean
@@ -66,7 +69,20 @@ export async function* llmChatStream(req: LLMChatRequest): AsyncGenerator<SSEEve
   try {
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        // 流结束时处理剩余缓冲区
+        if (buffer.trim()) {
+          const json = buffer.trim().replace(/^data:\s*/, '')
+          if (json) {
+            try {
+              yield JSON.parse(json) as SSEEvent
+            } catch {
+              // 忽略解析失败的行
+            }
+          }
+        }
+        break
+      }
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
@@ -89,13 +105,33 @@ export async function* llmChatStream(req: LLMChatRequest): AsyncGenerator<SSEEve
 }
 
 /**
- * 获取可用模型列表
+ * 获取可用模型列表（带能力标识）
  */
-export async function llmListModels(): Promise<string[]> {
+export async function llmListModels(): Promise<Array<{ id: string; name: string; capabilities: string[] }>> {
   const res = await fetch(`${API_BASE}/api/llm/models`)
-  const body = (await res.json()) as ApiResponse<{ models: string[] }>
+  const body = (await res.json()) as ApiResponse<{ models: Array<{ id: string; name: string; capabilities: string[] }> }>
   if (!body.ok || !body.data) throw new Error(body.error || '获取模型列表失败')
   return body.data.models
+}
+
+/**
+ * 获取 LLM 渠道状态（base_url、默认模型、打码 key）
+ */
+export async function llmStatus(): Promise<{
+  ready: boolean
+  base_url: string
+  model: string
+  api_key_masked: string
+}> {
+  const res = await fetch(`${API_BASE}/api/llm/status`)
+  const body = (await res.json()) as ApiResponse<{
+    ready: boolean
+    base_url: string
+    model: string
+    api_key_masked: string
+  }>
+  if (!body.ok || !body.data) throw new Error(body.error || '获取渠道状态失败')
+  return body.data
 }
 
 /**

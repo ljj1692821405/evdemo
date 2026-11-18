@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Union
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -15,9 +16,16 @@ from ..services import llm_service
 router = APIRouter(prefix="/api/llm", tags=["llm"])
 
 
+class MessageContent(BaseModel):
+    """多模态消息内容元素"""
+    type: str = Field(..., pattern="^(text|image_url)$")
+    text: str | None = None
+    image_url: dict[str, str] | None = None
+
+
 class Message(BaseModel):
     role: str = Field(..., pattern="^(system|user|assistant)$")
-    content: str
+    content: Union[str, list[MessageContent]]  # 支持字符串或多模态数组
 
 
 class ChatRequest(BaseModel):

@@ -296,11 +296,15 @@ async def chat(
 
 
 async def chat_stream(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     model: str | None = None,
     temperature: float = 0.2,
-) -> AsyncIterator[bytes]:
-    """流式对话，产出 SSE 字节块（原样透传上游 delta）。"""
+) -> AsyncIterator[dict[str, Any]]:
+    """
+    流式对话，产出自定义事件格式。
+    事件顺序：meta → delta* → usage → done / error
+    每个事件都是一个 dict，由路由层序列化为 SSE。
+    """
     _ensure_ready()
     cfg = llm_settings()
     payload = {
@@ -309,6 +313,18 @@ async def chat_stream(
         "temperature": temperature,
         "stream": True,
     }
+
+    started = time.perf_counter()
+
+    # 先产出 meta 事件
+    yield {
+        "event": "meta",
+        "model": payload["model"],
+        "timestamp": int(time.time() * 1000),
+    }
+
+    accumulated_content = ""
+    total_tokens = 0
 
     try:
         async with httpx.AsyncClient(timeout=cfg.timeout) as client:
@@ -321,14 +337,64 @@ async def chat_stream(
                 if resp.status_code >= 400:
                     body = (await resp.aread()).decode("utf-8", "replace")
                     raise ServiceError(_unwrap_error(resp.status_code, body), resp.status_code)
-                async for chunk in resp.aiter_bytes():
-                    yield chunk
-    except httpx.HTTPError as exc:
-        raise ServiceError(f"连接上游 LLM 失败：{exc}", 502) from exc
+
+                # 逐行解析上游 SSE
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    if line.strip() == "data: [DONE]":
+                        continue
+
+                    try:
+                        chunk = json.loads(line[6:])
+                    except json.JSONDecodeError:
+                        continue
+
+                    # 提取 delta 内容
+                    if chunk.get("choices"):
+                        delta = chunk["choices"][0].get("delta", {})
+                        if "content" in delta and delta["content"]:
+                            accumulated_content += delta["content"]
+                            yield {
+                                "event": "delta",
+                                "content": delta["content"],
+                            }
+
+                    # 提取 usage 信息
+                    if chunk.get("usage"):
+                        total_tokens = chunk["usage"].get("total_tokens", 0)
+                        yield {
+                            "event": "usage",
+                            "prompt_tokens": chunk["usage"].get("prompt_tokens", 0),
+                            "completion_tokens": chunk["usage"].get("completion_tokens", 0),
+                            "total_tokens": total_tokens,
+                        }
+
+        # 流结束正常
+        yield {
+            "event": "done",
+            "content": accumulated_content,
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+        }
+
+    except ServiceError as exc:
+        yield {
+            "event": "error",
+            "message": exc.message,
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+        }
+    except Exception as exc:
+        log.exception(f"流式对话异常：{exc}")
+        yield {
+            "event": "error",
+            "message": f"流式处理异常：{type(exc).__name__}: {exc}",
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+        }
 
 
-async def list_models() -> list[str]:
-    """拉取上游可用模型 ID 列表。"""
+
+async def list_models() -> list[dict[str, Any]]:
+    """拉取上游可用模型 ID 列表，并标注能力。"""
     _ensure_ready()
     cfg = llm_settings()
     try:
@@ -342,7 +408,47 @@ async def list_models() -> list[str]:
 
     data = resp.json()
     items = data.get("data") or []
-    return [str(m["id"]) for m in items if isinstance(m, dict) and m.get("id")]
+    models = []
+    
+    for m in items:
+        if not isinstance(m, dict) or not m.get("id"):
+            continue
+        
+        model_id = str(m["id"])
+        capabilities = _detect_capabilities(model_id)
+        
+        models.append({
+            "id": model_id,
+            "name": model_id,  # 可选：从上游解析更友好的名称
+            "capabilities": capabilities
+        })
+    
+    return models
+
+
+def _detect_capabilities(model_id: str) -> list[str]:
+    """根据模型 ID 检测其支持的能力。"""
+    model_lower = model_id.lower()
+    capabilities = ["text"]  # 所有模型默认支持文本
+    
+    # 图像理解能力检测
+    vision_keywords = [
+        "vision", "vlm", "claude-3", "gemini", "qwen-vl", 
+        "deepseek-v", "gpt-4-turbo", "gpt-4-vision", "gpt-4o"
+    ]
+    if any(kw in model_lower for kw in vision_keywords):
+        if "image" not in capabilities:
+            capabilities.append("image")
+    
+    # 视频理解能力检测（未来扩展）
+    video_keywords = [
+        "video", "gemini-1.5", "gpt-4o"
+    ]
+    if any(kw in model_lower for kw in video_keywords):
+        if "video" not in capabilities:
+            capabilities.append("video")
+    
+    return capabilities
 
 
 async def probe() -> dict[str, Any]:
