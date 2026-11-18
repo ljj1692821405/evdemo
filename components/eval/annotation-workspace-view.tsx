@@ -27,6 +27,9 @@ import {
   Search,
   Minus,
   X as XIcon,
+  ZoomIn,
+  Maximize2,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tag, Mono, Btn } from '@/components/eval/primitives'
@@ -72,6 +75,14 @@ export function AnnotationWorkspaceView() {
     currentTemplate?.widgets[0]?.id || null,
   )
   const [previewMode, setPreviewMode] = useState<boolean>(false)
+
+  // 大图弹窗查看状态 (支持单图或双图同屏大图对比)
+  const [enlargedImage, setEnlargedImage] = useState<{
+    title: string
+    src: string
+    compareSrc?: string
+    compareTitle?: string
+  } | null>(null)
 
   // 拖拽状态
   const [draggingWidgetIdx, setDraggingWidgetIdx] = useState<number | null>(null)
@@ -564,15 +575,31 @@ export function AnnotationWorkspaceView() {
                       )
                     })()}
 
-                    {/* 2. 单图展示卡 */}
+                    {/* 2. 单图展示卡 (支持点击放大查看) */}
                     {widget.type === 'image_card' && (
-                      <div className="flex flex-col items-center justify-center rounded-lg bg-muted/30 p-2 min-h-[160px] overflow-hidden">
+                      <div className="group/img relative flex flex-col items-center justify-center rounded-lg bg-muted/30 p-2 min-h-[160px] overflow-hidden">
                         {previewMode ? (
-                          <img
-                            src={sampleCase.inputs.generated_image}
-                            alt="生成的图片"
-                            className="max-h-48 rounded object-contain shadow-xs"
-                          />
+                          <>
+                            <img
+                              src={sampleCase.inputs.generated_image}
+                              alt="生成的图片"
+                              className="max-h-48 rounded object-contain shadow-xs transition-transform duration-200 group-hover/img:scale-102"
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEnlargedImage({
+                                  title: widget.title || '生成图片',
+                                  src: sampleCase.inputs.generated_image || '',
+                                })
+                              }}
+                              className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-black/70 backdrop-blur-xs px-2.5 py-1 text-[11px] font-medium text-white shadow-md hover:bg-black/90 transition-all opacity-0 group-hover/img:opacity-100"
+                            >
+                              <Maximize2 className="size-3" />
+                              点击放大
+                            </button>
+                          </>
                         ) : (
                           <div className="text-center text-muted-foreground flex flex-col items-center gap-1">
                             <ImageIcon className="size-8 text-primary/40" />
@@ -582,33 +609,81 @@ export function AnnotationWorkspaceView() {
                       </div>
                     )}
 
-                    {/* 3. 双图对比卡 */}
+                    {/* 3. 双图对比卡 (支持点击单图放大或一键同屏双图高清大图对比) */}
                     {widget.type === 'image_compare' && (
-                      <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted/30 p-2 min-h-[160px]">
-                        <div className="flex flex-col items-center justify-center border-r pr-2">
-                          <span className="text-[10px] text-muted-foreground mb-1">参考源图 (Reference)</span>
-                          {previewMode ? (
-                            <img
-                              src={sampleCase.inputs.reference_image}
-                              alt="参考图"
-                              className="max-h-36 rounded object-contain"
-                            />
-                          ) : (
-                            <Tag tone="neutral">{widget.secondaryFieldBinding || 'ref_image_url'}</Tag>
-                          )}
+                      <div className="relative rounded-lg bg-muted/30 p-2 min-h-[160px]">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="group/ref relative flex flex-col items-center justify-center border-r pr-2 overflow-hidden">
+                            <span className="text-[10px] text-muted-foreground mb-1">参考源图 (Reference)</span>
+                            {previewMode ? (
+                              <>
+                                <img
+                                  src={sampleCase.inputs.reference_image}
+                                  alt="参考图"
+                                  className="max-h-36 rounded object-contain cursor-zoom-in transition-transform duration-200 group-hover/ref:scale-103"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setEnlargedImage({
+                                      title: '参考角色源图 (Reference)',
+                                      src: sampleCase.inputs.reference_image || '',
+                                    })
+                                  }}
+                                />
+                                <div className="absolute bottom-1 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[9px] text-white opacity-0 group-hover/ref:opacity-100 pointer-events-none">
+                                  点击单图放大
+                                </div>
+                              </>
+                            ) : (
+                              <Tag tone="neutral">{widget.secondaryFieldBinding || 'ref_image_url'}</Tag>
+                            )}
+                          </div>
+
+                          <div className="group/gen relative flex flex-col items-center justify-center pl-2 overflow-hidden">
+                            <span className="text-[10px] text-muted-foreground mb-1">生成目标图 (Generated)</span>
+                            {previewMode ? (
+                              <>
+                                <img
+                                  src={sampleCase.inputs.generated_image}
+                                  alt="生成图"
+                                  className="max-h-36 rounded object-contain cursor-zoom-in transition-transform duration-200 group-hover/gen:scale-103"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setEnlargedImage({
+                                      title: '生成目标产物 (Generated)',
+                                      src: sampleCase.inputs.generated_image || '',
+                                    })
+                                  }}
+                                />
+                                <div className="absolute bottom-1 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[9px] text-white opacity-0 group-hover/gen:opacity-100 pointer-events-none">
+                                  点击单图放大
+                                </div>
+                              </>
+                            ) : (
+                              <Tag tone="primary">{widget.fieldBinding || 'agent_reply_image'}</Tag>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex flex-col items-center justify-center pl-2">
-                          <span className="text-[10px] text-muted-foreground mb-1">生成目标图 (Generated)</span>
-                          {previewMode ? (
-                            <img
-                              src={sampleCase.inputs.generated_image}
-                              alt="生成图"
-                              className="max-h-36 rounded object-contain"
-                            />
-                          ) : (
-                            <Tag tone="primary">{widget.fieldBinding || 'agent_reply_image'}</Tag>
-                          )}
-                        </div>
+
+                        {previewMode && (
+                          <div className="mt-2 pt-2 border-t flex justify-center">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEnlargedImage({
+                                  title: '参考源图 (左) vs 生成目标图 (右)',
+                                  src: sampleCase.inputs.reference_image || '',
+                                  compareSrc: sampleCase.inputs.generated_image || '',
+                                  compareTitle: '生成目标图',
+                                })
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary hover:bg-primary/20 transition-colors shadow-2xs"
+                            >
+                              <SplitSquareVertical className="size-3.5" />
+                              一键同屏双图高清放大对比
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -982,6 +1057,72 @@ export function AnnotationWorkspaceView() {
           )}
         </div>
       </div>
+
+      {/* 高保真全屏 / 巨幅大图查看与同屏对比 Lightbox 弹窗 */}
+      {enlargedImage && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-md p-6"
+          onClick={() => setEnlargedImage(null)}
+        >
+          <div
+            className="relative flex max-h-[92vh] max-w-6xl flex-col rounded-2xl border border-white/20 bg-card/95 p-4 shadow-2xl backdrop-blur-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 弹窗头部 */}
+            <div className="flex items-center justify-between border-b pb-3 mb-3">
+              <div className="flex items-center gap-2">
+                <Maximize2 className="size-4 text-primary" />
+                <h3 className="font-bold text-base text-foreground">{enlargedImage.title}</h3>
+                {enlargedImage.compareSrc && (
+                  <Tag tone="primary">双图同屏像素级对比</Tag>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setEnlargedImage(null)}
+                className="flex size-8 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            {/* 大图展示区域 */}
+            <div className="flex-1 overflow-auto flex items-center justify-center p-2 min-h-[360px]">
+              {enlargedImage.compareSrc ? (
+                /* 双图同屏大图并排对比 */
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                  <div className="flex flex-col items-center rounded-xl border bg-muted/30 p-3">
+                    <span className="text-xs font-bold text-muted-foreground mb-2">参考源图 (Reference)</span>
+                    <img
+                      src={enlargedImage.src}
+                      alt="参考大图"
+                      className="max-h-[68vh] w-auto rounded-lg object-contain shadow-md"
+                    />
+                  </div>
+                  <div className="flex flex-col items-center rounded-xl border bg-muted/30 p-3">
+                    <span className="text-xs font-bold text-primary mb-2">生成目标图 (Generated)</span>
+                    <img
+                      src={enlargedImage.compareSrc}
+                      alt="生成大图"
+                      className="max-h-[68vh] w-auto rounded-lg object-contain shadow-md"
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* 单图巨幅居中展示 */
+                <div className="flex flex-col items-center justify-center p-2">
+                  <img
+                    src={enlargedImage.src}
+                    alt={enlargedImage.title}
+                    className="max-h-[72vh] w-auto rounded-xl object-contain shadow-2xl"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
