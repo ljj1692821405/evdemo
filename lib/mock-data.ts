@@ -236,6 +236,7 @@ export type SimJob = {
   failed: number
   startedAt: string
   snapshotId?: string
+  stageId?: string
   errors: { caseId: string; type: string; detail: string }[]
 }
 
@@ -249,14 +250,16 @@ export type Snapshot = {
   status: 'completed' | 'partial_failed'
   missingCases: number
   note?: string
+  stageId?: string
 }
 
-const demoRuns = demoCases.map((c) => {
+const demoRuns = demoCases.map((c, i) => {
   const datasetId = goldenCases.find((g) => g.id === c.caseId)?.datasetId ?? `ds_${c.caseId}`
   const slug = datasetId.replace(/^ds_dim_/, '')
   const dimKeys = Array.from(new Set(c.turns.flatMap((t) => Object.keys(turnScores(t)))))
   return {
     c,
+    stageId: i < 3 ? 'stg_w1' : 'stg_w2',
     datasetId,
     datasetName: goldenDatasets.find((d) => d.id === datasetId)?.name ?? c.caseId,
     jobId: `job_${slug}`,
@@ -280,6 +283,7 @@ export const simJobs: SimJob[] = demoRuns.map((r) => ({
   failed: 0,
   startedAt: r.at,
   snapshotId: r.snapshotId,
+  stageId: r.stageId,
   errors: [],
 }))
 
@@ -293,6 +297,7 @@ export const snapshots: Snapshot[] = demoRuns.map((r) => ({
   status: 'completed',
   missingCases: 0,
   note: r.note,
+  stageId: r.stageId,
 }))
 
 export type RunStatus = 'queued' | 'running' | 'completed' | 'partial' | 'failed'

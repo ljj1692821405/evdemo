@@ -10,6 +10,7 @@ import { FrozenSnapshotCard } from './capability-snapshot'
 import { cn } from '@/lib/utils'
 import { useFieldDict } from '@/lib/field-dict-store'
 import { useDatasets } from '@/lib/dataset-store'
+import { useStages } from '@/lib/stage-store'
 import { experiments as initialExps, runs as initialRuns, scorers, snapshots, dimensions, type Experiment, type Run, type RunStatus } from '@/lib/mock-data'
 import { Panel, Tag, Mono, Th, Td, Btn, Progress } from './primitives'
 
@@ -41,6 +42,7 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
   const { agent } = useScope()
   const caps = useCapabilities()
   const { datasets } = useDatasets()
+  const { findStage } = useStages()
   const [createdSnaps, setCreatedSnaps] = useState<Record<string, FrozenSnapshot>>({})
   const [exps, setExps] = useState<Experiment[]>(initialExps)
   const [runList, setRunList] = useState<Run[]>(initialRuns)
@@ -217,6 +219,7 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                       <Th className="w-10"><span className="sr-only">选择</span></Th>
                       <Th>快照 ID</Th>
                       <Th>数据集</Th>
+                      <Th>阶段</Th>
                       <Th className="text-right">case 数</Th>
                     </tr>
                   </thead>
@@ -237,6 +240,13 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                           </Td>
                           <Td><Mono className="whitespace-nowrap font-semibold">{s.id}</Mono></Td>
                           <Td>{datasets.find((d) => d.id === s.datasetId)?.name ?? <span className="text-muted-foreground">已删除</span>}</Td>
+                          <Td>
+                            {s.stageId ? (
+                              <Tag tone="primary">{findStage(s.stageId)?.name ?? s.stageId}</Tag>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </Td>
                           <Td className="text-right"><Mono>{s.cases}</Mono></Td>
                         </tr>
                       )
@@ -287,6 +297,11 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                   <Snowflake className="size-3" aria-hidden="true" />
                   {snapshotLabel(exp.snapshotId)}
                 </Tag>
+                {(() => {
+                  const stageId = snapshots.find((s) => s.id === exp.snapshotId)?.stageId
+                  const stage = findStage(stageId)
+                  return stage ? <Tag tone="pass">{stage.name}</Tag> : null
+                })()}
               </span>
             }
             actions={

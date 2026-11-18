@@ -6,7 +6,11 @@ import { ChevronDown, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { experiments, runs, simJobs as initialJobs, snapshots as initialSnaps, type SimJob, type SimJobStatus, type Snapshot } from '@/lib/mock-data'
 import { useDatasets } from '@/lib/dataset-store'
-import { Panel, Mono, Th, Td, Btn, Progress } from './primitives'
+import { useStages } from '@/lib/stage-store'
+import { useCapabilities } from '@/lib/capability-store'
+import { resolveConfig } from '@/lib/capability-data'
+import { useScope } from '@/lib/tenant-store'
+import { Panel, Mono, Th, Td, Btn, Progress, Tag } from './primitives'
 
 const statusLabel: Record<SimJobStatus, string> = {
   pending: '排队中',
@@ -48,6 +52,9 @@ const selectCls = 'h-9 rounded-md border border-input bg-card px-2.5 text-sm foc
 
 export function SimulationsView() {
   const { datasets } = useDatasets()
+  const { agent } = useScope()
+  const { stages, createStage, findStage } = useStages(agent?.id)
+  const { assets, currentOf } = useCapabilities()
   const [jobs, setJobs] = useState<SimJob[]>(initialJobs)
   const [snaps, setSnaps] = useState<Snapshot[]>(initialSnaps)
   const [dsId, setDsId] = useState(datasets[0]?.id ?? '')
@@ -79,7 +86,7 @@ export function SimulationsView() {
     jobs.forEach((j) => {
       if (j.snapshotId && !snaps.some((s) => s.id === j.snapshotId)) {
         setSnaps((s) => [
-          { id: j.snapshotId!, jobId: j.id, datasetId: j.datasetId, cases: j.total - j.failed, turns: Math.round((j.total - j.failed) * 1.8), frozenAt: '刚刚', status: j.failed ? 'partial_failed' : 'completed', missingCases: j.failed },
+          { id: j.snapshotId!, jobId: j.id, datasetId: j.datasetId, cases: j.total - j.failed, turns: Math.round((j.total - j.failed) * 1.8), frozenAt: '刚刚', status: j.failed ? 'partial_failed' : 'completed', missingCases: j.failed, stageId: j.stageId },
           ...s,
         ])
       }
@@ -90,7 +97,31 @@ export function SimulationsView() {
     const ds = datasets.find((d) => d.id === dsId) ?? datasets[0]
     if (!ds) return
     const id = `job_${1108 + jobs.length - initialJobs.length}`
-    setJobs((j) => [{ id, datasetId: ds.id, script, status: 'pending', done: 0, total: ds.caseCount, failed: 0, startedAt: '刚刚', errors: [] }, ...j])
+
+    // 仿真前自动冻结当前配置为版本阶段
+    let stageId: string | undefined
+    if (agent) {
+      const cfg = currentOf(agent.id)
+      const items = cfg ? resolveConfig(cfg, assets) : []
+      const target = agent.models.find((m) => m.role === 'target')?.model ?? '—'
+      const stage = createStage({
+        agentId: agent.id,
+        name: `w${stages.length + 1} 阶段`,
+        frozenAt: '刚刚',
+        configVersion: cfg?.version ?? 'v1.0',
+        targetModel: target,
+        backgroundVersion: agent.backgroundVersion ?? 0,
+        skillVersionRefs: items
+          .filter((i) => i.asset.kind === 'skill')
+          .map((i) => ({ code: i.asset.code, name: i.asset.name, version: i.ver.version })),
+        toolVersionRefs: items
+          .filter((i) => i.asset.kind === 'tool')
+          .map((i) => ({ code: i.asset.code, name: i.asset.name, version: i.ver.version })),
+      })
+      stageId = stage.id
+    }
+
+    setJobs((j) => [{ id, datasetId: ds.id, script, status: 'pending', done: 0, total: ds.caseCount, failed: 0, startedAt: '刚刚', stageId, errors: [] }, ...j])
   }
 
   return (
@@ -125,6 +156,7 @@ export function SimulationsView() {
             <tr>
               <Th className="text-xs">任务</Th>
               <Th className="text-xs">数据集</Th>
+              <Th className="text-xs">阶段</Th>
               <Th className="text-xs">状态</Th>
               <Th className="text-xs">进度</Th>
               <Th className="text-right text-xs">失败率</Th>
@@ -143,6 +175,13 @@ export function SimulationsView() {
                   <tr onClick={() => setOpenJob(open ? null : j.id)} className={cn('cursor-pointer', open ? 'bg-accent/40' : 'hover:bg-muted/40')}>
                     <Td><Mono className="text-sm font-semibold">{j.id}</Mono></Td>
                     <Td>{datasetName(ds?.name)}</Td>
+                    <Td>
+                      {j.stageId ? (
+                        <Tag tone="primary">{findStage(j.stageId)?.name ?? j.stageId}</Tag>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </Td>
                     <Td>
                       <span className="flex items-center gap-2 whitespace-nowrap">
                         <span className={cn('size-2 rounded-full', statusDot[j.status], j.status === 'running' && 'animate-pulse')} aria-hidden="true" />
@@ -179,7 +218,7 @@ export function SimulationsView() {
                   </tr>
                   {open ? (
                     <tr className="bg-muted/20">
-                      <td colSpan={8} className="px-4 py-4">
+                      <td colSpan={9} className="px-4 py-4">
                         <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
                           <dl className="flex flex-col gap-2 text-sm">
                             <div className="flex flex-col gap-0.5">
@@ -228,6 +267,7 @@ export function SimulationsView() {
             <tr>
               <Th className="text-xs">快照</Th>
               <Th className="text-xs">数据集</Th>
+              <Th className="text-xs">阶段</Th>
               <Th className="text-right text-xs">Case</Th>
               <Th className="text-right text-xs">Turn</Th>
               <Th className="text-xs">冻结时间</Th>
@@ -247,6 +287,13 @@ export function SimulationsView() {
                   <tr className={cn(open && 'bg-accent/40')}>
                     <Td><Mono className="text-sm font-semibold">{s.id}</Mono></Td>
                     <Td>{datasetName(ds?.name)}</Td>
+                    <Td>
+                      {s.stageId ? (
+                        <Tag tone="primary">{findStage(s.stageId)?.name ?? s.stageId}</Tag>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </Td>
                     <Td className="text-right">
                       <Mono className="text-sm">{s.cases}</Mono>
                       {s.missingCases ? <span className="ml-2 whitespace-nowrap text-warn">缺 <span className="font-mono">{s.missingCases}</span></span> : null}
@@ -281,7 +328,7 @@ export function SimulationsView() {
                   </tr>
                   {open && refs.length ? (
                     <tr className="bg-muted/20">
-                      <td colSpan={8} className="px-4 py-3">
+                      <td colSpan={9} className="px-4 py-3">
                         <ul className="flex flex-col divide-y rounded-md border bg-card text-sm">
                           {refs.map((e) => {
                             const last = runs.filter((r) => r.experimentId === e.id)[0]
