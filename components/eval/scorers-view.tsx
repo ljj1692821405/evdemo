@@ -308,9 +308,6 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                   <Tag tone="primary" className="font-mono font-semibold">v{s.version}.0</Tag>
                 </span>
               }
-              actions={
-                <Stepper status={s.status} trial={t} />
-              }
             >
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div className="flex flex-col gap-4">
@@ -327,22 +324,34 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                   </div>
 
                   <Field label="输出维度">
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1.5 rounded-lg border border-border bg-transparent p-2.5">
                       {s.outputs.map((o) => {
                         const d = dims.find((x) => x.key === o)
-                        return <Tag key={o} tone="primary"><Mono>{o}</Mono> {d?.name || o}</Tag>
+                        return (
+                          <span key={o} className="inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 py-1 text-xs font-medium text-foreground">
+                            <Mono className="text-primary font-bold">{o}</Mono>
+                            <span>{d?.name || o}</span>
+                          </span>
+                        )
                       })}
                     </div>
                   </Field>
+
                   <Field label="实现方式">
-                    <div className="flex gap-1">
+                    <div className="flex flex-wrap gap-1.5 rounded-lg border border-border bg-transparent p-2.5">
                       {(Object.keys(implLabel) as Scorer['implType'][]).map((k) => (
                         <button
                           key={k}
                           type="button"
                           disabled={locked}
                           onClick={() => update({ implType: k })}
-                          className={cn('rounded-md border px-2.5 py-1 text-xs', s.implType === k ? 'border-primary bg-accent text-accent-foreground' : 'bg-card hover:bg-muted', locked && 'cursor-not-allowed opacity-60')}
+                          className={cn(
+                            'rounded-md border px-3 py-1 text-xs font-medium transition-colors',
+                            s.implType === k
+                              ? 'border-primary text-primary font-bold bg-primary/5'
+                              : 'border-input text-muted-foreground hover:border-primary/40 hover:text-foreground bg-transparent',
+                            locked && 'cursor-not-allowed opacity-60',
+                          )}
                         >
                           {implLabel[k]}
                         </button>
