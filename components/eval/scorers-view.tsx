@@ -182,11 +182,6 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card p-4">
         <div>
           <h2 className="text-sm font-bold text-foreground">维度与评分器</h2>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-            <span>{dims.length} 维度</span>
-            <span>·</span>
-            <span>{list.length} 评分器</span>
-          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -263,9 +258,9 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                     }}
                     className={cn(
                       'group transition-colors',
-                      hasScorer && 'cursor-pointer hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-ring',
+                      hasScorer && 'cursor-pointer hover:bg-muted/30 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-ring',
                       !d.enabled && 'text-muted-foreground',
-                      selected && 'bg-accent/60',
+                      selected ? 'bg-transparent ring-2 ring-inset ring-primary/40 font-semibold' : 'bg-transparent',
                     )}
                   >
                     <Td><Mono>{d.key}</Mono></Td>
