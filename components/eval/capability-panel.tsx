@@ -201,31 +201,29 @@ function RegisterForm({
         if (valid) onSubmit()
       }}
     >
-      <div className="flex flex-wrap gap-2">
-        <select aria-label="来源" className={cn(inputCls, 'w-28')} value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value as AssetSource })}>
-          {(Object.keys(sourceLabel) as AssetSource[]).map((s) => (
-            <option key={s} value={s}>{sourceLabel[s]}</option>
-          ))}
-        </select>
-        <input aria-label="名称" className={cn(inputCls, 'min-w-28 flex-1')} placeholder="名称" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <input aria-label="标识" className={cn(inputCls, 'min-w-28 flex-1 font-mono')} placeholder="code，如 doc.translate" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.trim() })} />
-      </div>
+      <select aria-label="来源" className={cn(inputCls, 'w-full')} value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value as AssetSource })}>
+        {(Object.keys(sourceLabel) as AssetSource[]).map((s) => (
+          <option key={s} value={s}>{sourceLabel[s]}</option>
+        ))}
+      </select>
+      <input aria-label="名称" className={cn(inputCls, 'w-full')} placeholder="名称" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      <input aria-label="标识" className={cn(inputCls, 'w-full font-mono')} placeholder="code，如 doc.translate" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.trim() })} />
       {codeTaken ? <p className="text-xs text-fail">该 Agent 下已存在同名 {kindLabel[form.kind]}</p> : null}
-      <input aria-label="功能介绍" className={inputCls} placeholder="功能介绍（必填）" value={form.intro} onChange={(e) => setForm({ ...form, intro: e.target.value })} />
-      <input aria-label="用途备注" className={inputCls} placeholder="用途备注" value={form.remark} onChange={(e) => setForm({ ...form, remark: e.target.value })} />
+      <input aria-label="功能介绍" className={cn(inputCls, 'w-full')} placeholder="功能介绍（必填）" value={form.intro} onChange={(e) => setForm({ ...form, intro: e.target.value })} />
+      <input aria-label="用途备注" className={cn(inputCls, 'w-full')} placeholder="用途备注" value={form.remark} onChange={(e) => setForm({ ...form, remark: e.target.value })} />
       {form.kind === 'skill' ? (
-        <div className="flex flex-wrap gap-2">
-          <input aria-label="触发场景" className={cn(inputCls, 'flex-1')} placeholder="触发场景，逗号分隔" onChange={(e) => setForm({ ...form, triggers: e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })} />
-          <input aria-label="依赖 Tool" className={cn(inputCls, 'flex-1 font-mono')} placeholder="依赖 Tool code，逗号分隔" onChange={(e) => setForm({ ...form, uses: e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })} />
-        </div>
+        <>
+          <input aria-label="触发场景" className={cn(inputCls, 'w-full')} placeholder="触发场景，逗号分隔" onChange={(e) => setForm({ ...form, triggers: e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })} />
+          <input aria-label="依赖 Tool" className={cn(inputCls, 'w-full font-mono')} placeholder="依赖 Tool code，逗号分隔" onChange={(e) => setForm({ ...form, uses: e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })} />
+        </>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          <input aria-label="输入" className={cn(inputCls, 'flex-1 font-mono')} placeholder="输入 schema" onChange={(e) => setForm({ ...form, input: e.target.value })} />
-          <input aria-label="输出" className={cn(inputCls, 'flex-1 font-mono')} placeholder="输出 schema" onChange={(e) => setForm({ ...form, output: e.target.value })} />
-        </div>
+        <>
+          <input aria-label="输入" className={cn(inputCls, 'w-full font-mono')} placeholder="输入 schema" onChange={(e) => setForm({ ...form, input: e.target.value })} />
+          <input aria-label="输出" className={cn(inputCls, 'w-full font-mono')} placeholder="输出 schema" onChange={(e) => setForm({ ...form, output: e.target.value })} />
+        </>
       )}
-      <div className="flex items-center justify-end gap-2">
-        <span className="mr-auto text-[11px] text-muted-foreground">登记后生成新配置版本 {nextVersion ? `（${nextVersion} → 下一版）` : 'v1.0'}</span>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <span className="mr-auto min-w-0 text-[11px] text-muted-foreground">登记后生成新配置版本 {nextVersion ? `（${nextVersion} → 下一版）` : 'v1.0'}</span>
         <Btn size="sm" variant="ghost" onClick={() => setForm(null)}>取消</Btn>
         <Btn size="sm" variant="primary" type="submit" disabled={!valid}>登记</Btn>
       </div>
