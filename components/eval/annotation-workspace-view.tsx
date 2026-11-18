@@ -22,6 +22,7 @@ import {
   MoveDown,
   Layers,
   Code2,
+  GripVertical,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tag, Mono, Btn } from '@/components/eval/primitives'
@@ -68,6 +69,11 @@ export function AnnotationWorkspaceView() {
   )
   const [previewMode, setPreviewMode] = useState<boolean>(false)
 
+  // 拖拽状态
+  const [draggingWidgetIdx, setDraggingWidgetIdx] = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  const [isDragOverCanvas, setIsDragOverCanvas] = useState<boolean>(false)
+
   const selectedWidget = currentTemplate?.widgets.find((w) => w.id === selectedWidgetId)
 
   // 模拟真实样例用于设计器预览
@@ -102,15 +108,22 @@ export function AnnotationWorkspaceView() {
     }
   }
 
-  const handleMoveWidget = (idx: number, dir: -1 | 1) => {
-    if (!currentTemplate) return
-    const targetIdx = idx + dir
-    if (targetIdx < 0 || targetIdx >= currentTemplate.widgets.length) return
+  const handleReorderWidget = (fromIdx: number, toIdx: number) => {
+    if (!currentTemplate || fromIdx === toIdx) return
     const nextWidgets = [...currentTemplate.widgets]
-    const temp = nextWidgets[idx]
-    nextWidgets[idx] = nextWidgets[targetIdx]
-    nextWidgets[targetIdx] = temp
+    const [moved] = nextWidgets.splice(fromIdx, 1)
+    nextWidgets.splice(toIdx, 0, moved)
     updateTemplate(currentTemplate.id, { widgets: nextWidgets })
+    setDraggingWidgetIdx(null)
+    setDragOverIdx(null)
+  }
+
+  const handleDropFromPalette = (widgetType: CanvasWidgetType) => {
+    const paletteItem = widgetPalette.find((w) => w.type === widgetType)
+    if (paletteItem) {
+      handleAddWidget(paletteItem)
+    }
+    setIsDragOverCanvas(false)
   }
 
   const handleUpdateWidget = (patch: Partial<CanvasWidget>) => {
@@ -242,8 +255,13 @@ export function AnnotationWorkspaceView() {
                       <button
                         key={item.type}
                         type="button"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/widget-type', item.type)
+                          e.dataTransfer.effectAllowed = 'copy'
+                        }}
                         onClick={() => handleAddWidget(item)}
-                        className="flex items-center justify-between rounded-lg border border-input bg-card p-2 text-left hover:border-primary/50 hover:bg-muted/50 transition-colors"
+                        className="flex items-center justify-between rounded-lg border border-input bg-card p-2 text-left hover:border-primary/50 hover:bg-muted/50 transition-colors cursor-grab active:cursor-grabbing"
                       >
                         <span className="flex items-center gap-2 font-medium">
                           <Icon className="size-3.5 text-primary" />
@@ -267,8 +285,13 @@ export function AnnotationWorkspaceView() {
                       <button
                         key={item.type}
                         type="button"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/widget-type', item.type)
+                          e.dataTransfer.effectAllowed = 'copy'
+                        }}
                         onClick={() => handleAddWidget(item)}
-                        className="flex items-center justify-between rounded-lg border border-input bg-card p-2 text-left hover:border-primary/50 hover:bg-muted/50 transition-colors"
+                        className="flex items-center justify-between rounded-lg border border-input bg-card p-2 text-left hover:border-primary/50 hover:bg-muted/50 transition-colors cursor-grab active:cursor-grabbing"
                       >
                         <span className="flex items-center gap-2 font-medium">
                           <Icon className="size-3.5 text-pass" />
@@ -292,8 +315,13 @@ export function AnnotationWorkspaceView() {
                       <button
                         key={item.type}
                         type="button"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/widget-type', item.type)
+                          e.dataTransfer.effectAllowed = 'copy'
+                        }}
                         onClick={() => handleAddWidget(item)}
-                        className="flex items-center justify-between rounded-lg border border-input bg-card p-2 text-left hover:border-primary/50 hover:bg-muted/50 transition-colors"
+                        className="flex items-center justify-between rounded-lg border border-input bg-card p-2 text-left hover:border-primary/50 hover:bg-muted/50 transition-colors cursor-grab active:cursor-grabbing"
                       >
                         <span className="flex items-center gap-2 font-medium">
                           <Icon className="size-3.5 text-warn" />
@@ -309,12 +337,35 @@ export function AnnotationWorkspaceView() {
         </div>
 
         {/* 中栏：可视化画布 (Canvas) */}
-        <div className="flex flex-col gap-3 rounded-xl border bg-muted/20 p-4 min-h-[600px]">
+        <div
+          onDragOver={(e) => {
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'copy'
+            if (!isDragOverCanvas) setIsDragOverCanvas(true)
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget === e.target) {
+              setIsDragOverCanvas(false)
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            const wType = e.dataTransfer.getData('text/widget-type') as CanvasWidgetType
+            if (wType) {
+              handleDropFromPalette(wType)
+            }
+          }}
+          className={cn(
+            'flex flex-col gap-3 rounded-xl border p-4 min-h-[600px] transition-all',
+            isDragOverCanvas ? 'bg-primary/5 border-primary/50 ring-2 ring-primary/20' : 'bg-muted/20 border-border',
+          )}
+        >
           {/* 画布顶部工具条 */}
           <div className="flex items-center justify-between border-b pb-2.5">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-foreground">画布布局：{currentTemplate?.name}</span>
               <Tag tone="primary">{currentTemplate?.widgets.length} 个控件</Tag>
+              {!previewMode && <Tag tone="neutral">可拖拽重排 / 拖入组件</Tag>}
             </div>
 
             {/* 栅格切换 */}
@@ -356,6 +407,8 @@ export function AnnotationWorkspaceView() {
           >
             {currentTemplate?.widgets.map((widget, idx) => {
               const isSelected = selectedWidgetId === widget.id && !previewMode
+              const isDragging = draggingWidgetIdx === idx
+              const isDragTarget = dragOverIdx === idx
               const colSpan =
                 widget.gridSpan === 3
                   ? 'md:col-span-3'
@@ -366,11 +419,41 @@ export function AnnotationWorkspaceView() {
               return (
                 <div
                   key={widget.id}
+                  draggable={!previewMode}
+                  onDragStart={(e) => {
+                    if (previewMode) return
+                    setDraggingWidgetIdx(idx)
+                    e.dataTransfer.setData('text/widget-idx', String(idx))
+                    e.dataTransfer.effectAllowed = 'move'
+                  }}
+                  onDragOver={(e) => {
+                    if (previewMode || draggingWidgetIdx === null) return
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                    if (dragOverIdx !== idx) setDragOverIdx(idx)
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverIdx === idx) setDragOverIdx(null)
+                  }}
+                  onDrop={(e) => {
+                    if (previewMode) return
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (draggingWidgetIdx !== null) {
+                      handleReorderWidget(draggingWidgetIdx, idx)
+                    }
+                  }}
+                  onDragEnd={() => {
+                    setDraggingWidgetIdx(null)
+                    setDragOverIdx(null)
+                  }}
                   onClick={() => !previewMode && setSelectedWidgetId(widget.id)}
                   className={cn(
                     'group relative flex flex-col justify-between rounded-xl border bg-card p-3.5 transition-all text-xs cursor-pointer',
                     colSpan,
-                    isSelected
+                    isDragging && 'opacity-40 scale-95 border-dashed border-primary',
+                    isDragTarget && 'ring-2 ring-primary border-primary bg-primary/5',
+                    isSelected && !isDragging
                       ? 'border-primary ring-2 ring-primary/20 shadow-md'
                       : 'border-border hover:border-primary/40',
                   )}
@@ -378,34 +461,15 @@ export function AnnotationWorkspaceView() {
                   {/* 控件头部 */}
                   <div className="flex items-center justify-between border-b pb-2 mb-2">
                     <span className="font-semibold text-foreground flex items-center gap-1.5">
+                      {!previewMode && (
+                        <GripVertical className="size-3.5 text-muted-foreground/60 cursor-grab active:cursor-grabbing hover:text-foreground" />
+                      )}
                       <span className="size-1.5 rounded-full bg-primary" />
                       {widget.title}
                     </span>
 
                     {!previewMode && (
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleMoveWidget(idx, -1)
-                          }}
-                          className="p-1 hover:bg-muted rounded text-muted-foreground"
-                          disabled={idx === 0}
-                        >
-                          <MoveUp className="size-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleMoveWidget(idx, 1)
-                          }}
-                          className="p-1 hover:bg-muted rounded text-muted-foreground"
-                          disabled={idx === currentTemplate.widgets.length - 1}
-                        >
-                          <MoveDown className="size-3" />
-                        </button>
                         <button
                           type="button"
                           onClick={(e) => {
