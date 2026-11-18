@@ -120,8 +120,9 @@ export function AnnotationWorkspaceView() {
     const [moved] = nextWidgets.splice(fromIdx, 1)
     nextWidgets.splice(toIdx, 0, moved)
     updateTemplate(currentTemplate.id, { widgets: nextWidgets })
-    setDraggingWidgetIdx(null)
-    setDragOverIdx(null)
+    // 更新正在拖动的元素索引为新位置，实现连贯排斥
+    setDraggingWidgetIdx(toIdx)
+    setDragOverIdx(toIdx)
   }
 
   const handleDropFromPalette = (widgetType: CanvasWidgetType) => {
@@ -414,7 +415,14 @@ export function AnnotationWorkspaceView() {
             {currentTemplate?.widgets.map((widget, idx) => {
               const isSelected = selectedWidgetId === widget.id && !previewMode
               const isDragging = draggingWidgetIdx === idx
-              const isDragTarget = dragOverIdx === idx
+              const isDragTarget = dragOverIdx === idx && !isDragging
+              const isBeingDisplaced =
+                draggingWidgetIdx !== null &&
+                dragOverIdx !== null &&
+                !isDragging &&
+                ((draggingWidgetIdx < dragOverIdx && idx > draggingWidgetIdx && idx <= dragOverIdx) ||
+                  (draggingWidgetIdx > dragOverIdx && idx >= dragOverIdx && idx < draggingWidgetIdx))
+
               const colSpan =
                 widget.gridSpan === 3
                   ? 'md:col-span-3'
@@ -429,25 +437,32 @@ export function AnnotationWorkspaceView() {
                   onDragStart={(e) => {
                     if (previewMode) return
                     setDraggingWidgetIdx(idx)
+                    setDragOverIdx(idx)
                     e.dataTransfer.setData('text/widget-idx', String(idx))
                     e.dataTransfer.effectAllowed = 'move'
+                  }}
+                  onDragEnter={(e) => {
+                    if (previewMode || draggingWidgetIdx === null) return
+                    e.preventDefault()
+                    if (dragOverIdx !== idx) {
+                      setDragOverIdx(idx)
+                    }
                   }}
                   onDragOver={(e) => {
                     if (previewMode || draggingWidgetIdx === null) return
                     e.preventDefault()
                     e.dataTransfer.dropEffect = 'move'
-                    if (dragOverIdx !== idx) setDragOverIdx(idx)
-                  }}
-                  onDragLeave={() => {
-                    if (dragOverIdx === idx) setDragOverIdx(null)
+                    // 当拖拽经过其他卡片时，触发实时排斥交换
+                    if (draggingWidgetIdx !== idx) {
+                      handleReorderWidget(draggingWidgetIdx, idx)
+                    }
                   }}
                   onDrop={(e) => {
                     if (previewMode) return
                     e.preventDefault()
                     e.stopPropagation()
-                    if (draggingWidgetIdx !== null) {
-                      handleReorderWidget(draggingWidgetIdx, idx)
-                    }
+                    setDraggingWidgetIdx(null)
+                    setDragOverIdx(null)
                   }}
                   onDragEnd={() => {
                     setDraggingWidgetIdx(null)
@@ -455,10 +470,10 @@ export function AnnotationWorkspaceView() {
                   }}
                   onClick={() => !previewMode && setSelectedWidgetId(widget.id)}
                   className={cn(
-                    'group relative flex flex-col justify-between rounded-xl border bg-card p-3.5 transition-all text-xs cursor-pointer',
+                    'group relative flex flex-col justify-between rounded-xl border bg-card p-3.5 transition-all duration-200 text-xs cursor-pointer select-none',
                     colSpan,
-                    isDragging && 'opacity-40 scale-95 border-dashed border-primary',
-                    isDragTarget && 'ring-2 ring-primary border-primary bg-primary/5',
+                    isDragging && 'opacity-30 scale-95 border-dashed border-primary shadow-inner',
+                    isBeingDisplaced && 'translate-y-1 scale-[0.98] border-primary/50 bg-accent/20 transition-transform',
                     isSelected && !isDragging
                       ? 'border-primary ring-2 ring-primary/20 shadow-md'
                       : 'border-border hover:border-primary/40',
