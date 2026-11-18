@@ -23,6 +23,8 @@ import {
   Layers,
   Code2,
   GripVertical,
+  CheckCircle2,
+  Search,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tag, Mono, Btn } from '@/components/eval/primitives'
@@ -667,46 +669,117 @@ export function AnnotationWorkspaceView() {
                 </select>
               </label>
 
-              {/* 字段绑定配置 */}
+              {/* 主数据字段绑定 (精美边框卡片列表) */}
               {(selectedWidget.type === 'text_card' ||
                 selectedWidget.type === 'image_card' ||
                 selectedWidget.type === 'video_player' ||
                 selectedWidget.type === 'image_compare' ||
                 selectedWidget.type === 'diff_viewer') && (
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium text-muted-foreground">主数据字段绑定 (字典)</span>
-                  <select
-                    value={selectedWidget.fieldBinding || ''}
-                    onChange={(e) => handleUpdateWidget({ fieldBinding: e.target.value })}
-                    className="h-8 rounded border border-input bg-background px-2 font-mono text-xs"
-                  >
-                    <option value="">请选择绑定的字典字段...</option>
-                    {dict.entries.map((f) => (
-                      <option key={f.logicalName} value={f.logicalName}>
-                        {f.logicalName} ({f.description})
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="flex flex-col gap-1.5 border-t pt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                      <Database className="size-3 text-primary" />
+                      主数据字段绑定 (项目字典)
+                    </span>
+                    <Tag tone="primary" className="font-mono text-[10px]">
+                      {selectedWidget.fieldBinding || '未绑定'}
+                    </Tag>
+                  </div>
+
+                  <div className="flex flex-col gap-1 max-h-56 overflow-y-auto rounded-lg border bg-muted/20 p-1.5">
+                    {dict.entries.map((f) => {
+                      const isBound = selectedWidget.fieldBinding === f.logicalName
+                      return (
+                        <button
+                          key={f.logicalName}
+                          type="button"
+                          onClick={() => handleUpdateWidget({ fieldBinding: f.logicalName })}
+                          className={cn(
+                            'group flex items-start justify-between gap-2 rounded-lg border p-2 text-left transition-all',
+                            isBound
+                              ? 'border-primary bg-primary/5 ring-1 ring-primary/20 shadow-2xs'
+                              : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40',
+                          )}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <Mono className={cn('font-bold text-xs', isBound ? 'text-primary' : 'text-foreground')}>
+                                {f.logicalName}
+                              </Mono>
+                              {f.avgTokens > 0 && (
+                                <span className="font-mono text-[10px] text-muted-foreground/80">
+                                  ~{f.avgTokens} tok
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">
+                              {f.description}
+                            </div>
+                          </div>
+
+                          <div className="flex size-5 shrink-0 items-center justify-center rounded-full border border-border mt-0.5">
+                            {isBound ? (
+                              <Check className="size-3 text-primary font-bold" />
+                            ) : (
+                              <span className="size-1.5 rounded-full bg-transparent group-hover:bg-muted-foreground/30" />
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
               )}
 
-              {/* 双图对比卡所需的第二字段 */}
+              {/* 双图对比卡所需的第二字段 (参考图绑定) */}
               {selectedWidget.type === 'image_compare' && (
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium text-muted-foreground">参考图字段绑定</span>
-                  <select
-                    value={selectedWidget.secondaryFieldBinding || ''}
-                    onChange={(e) => handleUpdateWidget({ secondaryFieldBinding: e.target.value })}
-                    className="h-8 rounded border border-input bg-background px-2 font-mono text-xs"
-                  >
-                    <option value="">请选择参考图字段...</option>
-                    {dict.entries.map((f) => (
-                      <option key={f.logicalName} value={f.logicalName}>
-                        {f.logicalName} ({f.description})
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="flex flex-col gap-1.5 border-t pt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                      <ImageIcon className="size-3 text-primary" />
+                      参考图字段绑定 (Reference Image)
+                    </span>
+                    <Tag tone="neutral" className="font-mono text-[10px]">
+                      {selectedWidget.secondaryFieldBinding || '未绑定'}
+                    </Tag>
+                  </div>
+
+                  <div className="flex flex-col gap-1 max-h-44 overflow-y-auto rounded-lg border bg-muted/20 p-1.5">
+                    {dict.entries.map((f) => {
+                      const isBound = selectedWidget.secondaryFieldBinding === f.logicalName
+                      return (
+                        <button
+                          key={f.logicalName}
+                          type="button"
+                          onClick={() => handleUpdateWidget({ secondaryFieldBinding: f.logicalName })}
+                          className={cn(
+                            'group flex items-start justify-between gap-2 rounded-lg border p-2 text-left transition-all',
+                            isBound
+                              ? 'border-primary bg-primary/5 ring-1 ring-primary/20 shadow-2xs'
+                              : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40',
+                          )}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <Mono className={cn('font-bold text-xs', isBound ? 'text-primary' : 'text-foreground')}>
+                              {f.logicalName}
+                            </Mono>
+                            <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">
+                              {f.description}
+                            </div>
+                          </div>
+
+                          <div className="flex size-5 shrink-0 items-center justify-center rounded-full border border-border mt-0.5">
+                            {isBound ? (
+                              <Check className="size-3 text-primary font-bold" />
+                            ) : (
+                              <span className="size-1.5 rounded-full bg-transparent group-hover:bg-muted-foreground/30" />
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
               )}
 
               {/* 评分表单绑定的评测维度 */}
