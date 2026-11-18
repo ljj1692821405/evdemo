@@ -15,6 +15,8 @@ import {
   Cpu,
   Trash2,
   AlertCircle,
+  Eye,
+  FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
@@ -25,12 +27,27 @@ import { Panel, Tag, Mono, Th, Td, Btn } from './primitives'
 import { PromptEditor, defaultPrompt, referencedVars, judgeModels } from './prompt-editor'
 import { TrialLab } from './trial-lab'
 import { CapabilityImportModal } from './capability-import-modal'
+import { useCapabilityRegistry } from '@/lib/eval-capability-store'
 
 type Trial = 'idle' | 'running' | 'passed'
 
 const implLabel = { llm_judge: 'LLM 裁判', script: '脚本', hybrid: '混合' }
 
 const emptyDim = { key: '', name: '', gtKey: '', release: '0.85' }
+
+// 维度引用的服务能力类型推导
+const getDimServiceType = (dimKey: string, dimName: string): { label: string; tone: 'primary' | 'warn' | 'pass' | 'neutral' } => {
+  if (dimKey.startsWith('t2i.') || dimKey.includes('image') || dimName.includes('图') || dimName.includes('画') || dimName.includes('视觉')) {
+    return { label: '图片', tone: 'warn' }
+  }
+  if (dimKey.startsWith('i2v.') || dimKey.includes('video') || dimName.includes('视频') || dimName.includes('时序')) {
+    return { label: '视频', tone: 'primary' }
+  }
+  if (dimKey.startsWith('code.') || dimKey.includes('ast') || dimKey.includes('syntax') || dimName.includes('代码') || dimName.includes('AST') || dimName.includes('脚本') || dimKey === '4.1') {
+    return { label: '规则', tone: 'pass' }
+  }
+  return { label: '文本', tone: 'primary' }
+}
 
 export function ScorersView({ initialImportCapId }: { initialImportCapId?: string }) {
   const { agent } = useScope()
@@ -49,6 +66,7 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
   const [trial, setTrial] = useState<Record<string, Trial>>({})
   const [importModalOpen, setImportModalOpen] = useState(!!initialImportCapId)
+  const [showFullPromptPreview, setShowFullPromptPreview] = useState(false)
 
   const s = list.find((x) => x.id === sel) || list[0]
   const locked = s?.status === 'published'
@@ -167,7 +185,7 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px_1fr]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[430px_1fr]">
         <Panel
           title="维度注册表"
           actions={
@@ -197,12 +215,20 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
           {dims.length === 0 ? <p className="border-b px-4 py-8 text-center text-sm text-muted-foreground">暂无维度</p> : null}
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40">
-              <tr><Th className="w-14">key</Th><Th>名称</Th><Th>阈值</Th><Th className="w-16 text-center">启用</Th><Th className="w-12 text-center" /></tr>
+              <tr>
+                <Th className="w-14">key</Th>
+                <Th className="w-16">能力类型</Th>
+                <Th>名称</Th>
+                <Th>阈值</Th>
+                <Th className="w-16 text-center">启用</Th>
+                <Th className="w-12 text-center" />
+              </tr>
             </thead>
             <tbody className="divide-y">
               {dims.map((d) => {
                 const hasScorer = list.some((item) => item.outputs.includes(d.key))
                 const selected = selectedDimKey === d.key
+                const svc = getDimServiceType(d.key, d.name)
 
                 return (
                   <tr
@@ -225,6 +251,11 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                     )}
                   >
                     <Td><Mono>{d.key}</Mono></Td>
+                    <Td>
+                      <Tag tone={svc.tone} className="font-medium text-[10px] px-1.5 py-0.5">
+                        {svc.label}
+                      </Tag>
+                    </Td>
                     <Td><span className={cn('font-medium', !hasScorer && 'opacity-50')}>{d.name}</span></Td>
                     <Td>
                       <div className="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
@@ -282,6 +313,18 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
             >
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div className="flex flex-col gap-4">
+                  {/* 输出维度上面加一行-按钮：预览完整效果 */}
+                  <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <FileText className="size-3.5 text-primary" />
+                      当前评分器执行契约与完整提示词
+                    </span>
+                    <Btn size="sm" variant="primary" onClick={() => setShowFullPromptPreview(true)}>
+                      <Eye className="size-3.5" />
+                      预览完整效果
+                    </Btn>
+                  </div>
+
                   <Field label="输出维度">
                     <div className="flex flex-wrap gap-1.5">
                       {s.outputs.map((o) => {
@@ -483,6 +526,68 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
               </Btn>
               <Btn size="sm" variant="danger" onClick={() => deleteDimension(confirmDeleteKey)}>
                 确认删除
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 预览完整效果弹窗 */}
+      {showFullPromptPreview && s && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          onClick={() => setShowFullPromptPreview(false)}
+        >
+          <div
+            className="flex max-h-[88vh] w-full max-w-3xl flex-col rounded-2xl border bg-card shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <Eye className="size-4 text-primary" />
+                <h3 className="text-sm font-bold text-foreground">
+                  评分器完整提示词与执行效果预览
+                </h3>
+                <Tag tone="primary">{s.name}</Tag>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFullPromptPreview(false)}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 text-xs flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-3 rounded-lg border bg-muted/20 p-3">
+                <div>
+                  <span className="text-muted-foreground">裁判基座模型：</span>
+                  <Mono className="font-bold text-foreground">{s.judgeModel || 'openai/gpt-5.4-mini'}</Mono>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">提示词版本：</span>
+                  <Mono className="font-bold text-primary">{s.promptVersion || 'pt_v1'}</Mono>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-muted-foreground">挂载输出维度：</span>
+                  <span className="font-semibold text-foreground ml-1">
+                    {s.outputs.map((o) => `${o} (${dims.find((x) => x.key === o)?.name || o})`).join('、')}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <span className="font-bold text-foreground block mb-1.5">完整编译后 System Prompt：</span>
+                <pre className="whitespace-pre-wrap rounded-lg border bg-muted/40 p-3.5 font-mono text-[11px] leading-relaxed text-foreground max-h-80 overflow-y-auto">
+                  {s.promptTemplate || template}
+                </pre>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end border-t px-5 py-3">
+              <Btn size="sm" variant="primary" onClick={() => setShowFullPromptPreview(false)}>
+                完成浏览
               </Btn>
             </div>
           </div>

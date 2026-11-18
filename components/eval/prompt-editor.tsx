@@ -105,25 +105,30 @@ export function PromptEditor({ template, background, agentBackground, agentBackg
         />
       </label>
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Braces className="size-3" aria-hidden="true" />插入变量</span>
-        {inputFields.map((f) => {
-          const used = refs.includes(f)
-          return (
-            <button
-              key={f}
-              type="button"
-              disabled={locked}
-              onClick={() => insert(f)}
-              className={cn(
-                'rounded border px-1.5 py-0.5 font-mono text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60',
-                used ? 'border-primary/40 bg-accent text-accent-foreground' : 'border-dashed bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground',
-              )}
-            >
-              {`{{${f}}}`}
-            </button>
-          )
-        })}
+      <div className="flex flex-col gap-1.5">
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+          <Braces className="size-3.5 text-primary" aria-hidden="true" />
+          裁判系统提示词与 {'{}'} 插入变量
+        </span>
+        <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-card/60 p-2">
+          {inputFields.map((f) => {
+            const used = refs.includes(f)
+            return (
+              <button
+                key={f}
+                type="button"
+                disabled={locked}
+                onClick={() => insert(f)}
+                className={cn(
+                  'rounded border px-2 py-1 font-mono text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60 shadow-2xs',
+                  used ? 'border-primary/50 bg-primary/10 text-primary font-bold' : 'border-dashed bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground',
+                )}
+              >
+                {`{{${f}}}`}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       <label className="sr-only" htmlFor="prompt-template">提示词模板</label>
