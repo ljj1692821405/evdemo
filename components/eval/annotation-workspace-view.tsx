@@ -25,6 +25,8 @@ import {
   GripVertical,
   CheckCircle2,
   Search,
+  Minus,
+  X as XIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tag, Mono, Btn } from '@/components/eval/primitives'
@@ -91,9 +93,11 @@ export function AnnotationWorkspaceView() {
       fieldBinding:
         paletteItem.type === 'image_card'
           ? 'agent_reply_image'
-          : paletteItem.type === 'text_card'
-            ? 'user_query'
-            : undefined,
+          : undefined,
+      fieldBindings:
+        paletteItem.type === 'text_card'
+          ? ['user_query']
+          : undefined,
       boundDimensions: paletteItem.type === 'score_form' ? dimensions.slice(0, 2).map((d) => d.key) : undefined,
     }
     const updated = [...currentTemplate.widgets, newWidget]
@@ -488,20 +492,62 @@ export function AnnotationWorkspaceView() {
 
                   {/* 控件主体（设计态 vs 真实预览态） */}
                   <div className="flex-1 min-h-[100px] flex flex-col justify-center">
-                    {/* 1. 文本卡片 */}
-                    {widget.type === 'text_card' && (
-                      <div className="rounded-lg bg-muted/40 p-2.5 font-mono text-[11px] leading-relaxed">
-                        {previewMode ? (
-                          (sampleCase.inputs[widget.fieldBinding || 'prompt'] as string) ||
-                          sampleCase.inputs.prompt
-                        ) : (
-                          <div className="text-muted-foreground flex items-center justify-between">
-                            <span>绑定字典字段：{widget.fieldBinding || '未绑定'}</span>
-                            <Tag tone="primary">{widget.fieldBinding || 'user_query'}</Tag>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {/* 1. 文本展示卡 (支持多字段加减与分段展示) */}
+                    {widget.type === 'text_card' && (() => {
+                      const bindings = widget.fieldBindings?.length
+                        ? widget.fieldBindings
+                        : widget.fieldBinding
+                          ? [widget.fieldBinding]
+                          : ['user_query']
+
+                      return (
+                        <div className="flex flex-col gap-2">
+                          {bindings.map((fName) => {
+                            const dictEntry = dict.entries.find((e) => e.logicalName === fName)
+                            const sampleVal = (sampleCase.inputs[fName] as string) || (fName === 'user_query' ? sampleCase.inputs.prompt : fName === 'agent_reply' ? 'Agent 交互执行输出示例内容...' : undefined)
+
+                            return (
+                              <div key={fName} className="group/item rounded-lg border border-border bg-muted/40 p-2.5 font-mono text-[11px] leading-relaxed transition-all hover:border-primary/40">
+                                <div className="flex items-center justify-between border-b border-border/60 pb-1 mb-1.5 text-muted-foreground">
+                                  <span className="flex items-center gap-1.5 font-bold text-foreground">
+                                    <FileText className="size-3 text-primary" />
+                                    {fName}
+                                    {dictEntry?.description && (
+                                      <span className="font-normal text-[10px] text-muted-foreground">({dictEntry.description})</span>
+                                    )}
+                                  </span>
+
+                                  <div className="flex items-center gap-1">
+                                    <Tag tone="primary" className="font-mono text-[9px]">{fName}</Tag>
+                                    {!previewMode && bindings.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          const next = bindings.filter((x) => x !== fName)
+                                          handleUpdateWidget({ fieldBindings: next, fieldBinding: next[0] })
+                                        }}
+                                        className="size-4.5 flex items-center justify-center rounded text-muted-foreground hover:bg-fail-soft hover:text-fail"
+                                      >
+                                        <XIcon className="size-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="text-foreground whitespace-pre-wrap">
+                                  {previewMode ? (
+                                    sampleVal || <span className="text-muted-foreground italic">[该样例 {fName} 为空]</span>
+                                  ) : (
+                                    <span className="text-muted-foreground">运行时填充 `{`{{${fName}}}`}` 真实数据</span>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
 
                     {/* 2. 单图展示卡 */}
                     {widget.type === 'image_card' && (
@@ -669,9 +715,89 @@ export function AnnotationWorkspaceView() {
                 </select>
               </label>
 
-              {/* 主数据字段绑定 (精美边框卡片列表) */}
-              {(selectedWidget.type === 'text_card' ||
-                selectedWidget.type === 'image_card' ||
+              {/* 1. 文本展示卡专用的「多字段多选绑定」配置 */}
+              {selectedWidget.type === 'text_card' && (() => {
+                const currentBindings = selectedWidget.fieldBindings?.length
+                  ? selectedWidget.fieldBindings
+                  : selectedWidget.fieldBinding
+                    ? [selectedWidget.fieldBinding]
+                    : ['user_query']
+
+                const toggleField = (fName: string) => {
+                  const exists = currentBindings.includes(fName)
+                  let next: string[]
+                  if (exists) {
+                    if (currentBindings.length === 1) return // 至少保留 1 个字段
+                    next = currentBindings.filter((x) => x !== fName)
+                  } else {
+                    next = [...currentBindings, fName]
+                  }
+                  handleUpdateWidget({ fieldBindings: next, fieldBinding: next[0] })
+                }
+
+                return (
+                  <div className="flex flex-col gap-1.5 border-t pt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                        <FileText className="size-3 text-primary" />
+                        展示字段多选绑定 (可多选组合)
+                      </span>
+                      <Tag tone="primary" className="font-mono text-[10px]">
+                        已选 {currentBindings.length} 个字段
+                      </Tag>
+                    </div>
+
+                    <div className="flex flex-col gap-1 max-h-56 overflow-y-auto rounded-lg border bg-muted/20 p-1.5">
+                      {dict.entries.map((f) => {
+                        const isBound = currentBindings.includes(f.logicalName)
+                        return (
+                          <button
+                            key={f.logicalName}
+                            type="button"
+                            onClick={() => toggleField(f.logicalName)}
+                            className={cn(
+                              'group flex items-start justify-between gap-2 rounded-lg border p-2 text-left transition-all',
+                              isBound
+                                ? 'border-primary bg-primary/5 ring-1 ring-primary/20 shadow-2xs'
+                                : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40',
+                            )}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <Mono className={cn('font-bold text-xs', isBound ? 'text-primary' : 'text-foreground')}>
+                                  {f.logicalName}
+                                </Mono>
+                                {f.avgTokens > 0 && (
+                                  <span className="font-mono text-[10px] text-muted-foreground/80">
+                                    ~{f.avgTokens} tok
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">
+                                {f.description}
+                              </div>
+                            </div>
+
+                            <div className={cn(
+                              'flex size-5 shrink-0 items-center justify-center rounded border mt-0.5 transition-colors',
+                              isBound ? 'bg-primary border-primary text-primary-foreground' : 'border-border bg-card group-hover:border-primary/50'
+                            )}>
+                              {isBound ? (
+                                <Check className="size-3 font-bold" />
+                              ) : (
+                                <Plus className="size-2.5 text-muted-foreground/40 group-hover:text-primary" />
+                              )}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* 2. 单图/视频/Diff 等组件的「单字段单选绑定」配置 */}
+              {(selectedWidget.type === 'image_card' ||
                 selectedWidget.type === 'video_player' ||
                 selectedWidget.type === 'image_compare' ||
                 selectedWidget.type === 'diff_viewer') && (
@@ -679,7 +805,7 @@ export function AnnotationWorkspaceView() {
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
                       <Database className="size-3 text-primary" />
-                      主数据字段绑定 (项目字典)
+                      主数据字段绑定 (单选)
                     </span>
                     <Tag tone="primary" className="font-mono text-[10px]">
                       {selectedWidget.fieldBinding || '未绑定'}

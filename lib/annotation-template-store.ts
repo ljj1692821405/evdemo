@@ -20,7 +20,8 @@ export type CanvasWidget = {
   type: CanvasWidgetType
   title: string
   gridSpan: 1 | 2 | 3 // 占几列 (1~3)
-  fieldBinding?: string // 绑定的字典字段 (如 generated_image, user_query)
+  fieldBinding?: string // 绑定的单字段 (如 generated_image)
+  fieldBindings?: string[] // 支持绑定多个字段 (如文本卡片展示 [user_query, agent_reply, ground_truth])
   secondaryFieldBinding?: string // 对比卡所需的第二个字段 (如 reference_image)
   boundDimensions?: string[] // 评分表单绑定的评测维度 keys
   config?: {
