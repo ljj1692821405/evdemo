@@ -2,9 +2,10 @@
 
 import { useImperativeHandle, useRef, type Ref } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, Braces, Pencil, Plus, UserRound } from 'lucide-react'
+import { AlertTriangle, Pencil, Plus, UserRound, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Mono, Tag } from './primitives'
+import { useFieldDict } from '@/lib/field-dict-store'
 
 export const judgeModels = ['openai/gpt-5.4-mini', 'openai/gpt-5-mini', 'openai/gpt-5', 'anthropic/claude-sonnet-4.5', 'google/gemini-2.5-flash']
 
@@ -16,8 +17,14 @@ export function referencedVars(template: string) {
 
 export const defaultBackground = '你是评测裁判。请根据以下信息判断 Agent 表现是否达标，输出 pass / fail 及理由。'
 
-export function defaultPrompt(fields: string[]) {
-  return fields.map((f) => `## ${f}\n{{${f}}}`).join('\n')
+export function defaultPrompt(fields: string[], dictEntries?: { logicalName: string; description: string }[]) {
+  return fields
+    .map((f) => {
+      const desc = dictEntries?.find((e) => e.logicalName === f)?.description
+      const header = desc ? `## ${f} (${desc})` : `## ${f}`
+      return `${header}\n{{${f}}}`
+    })
+    .join('\n')
 }
 
 type Props = {
@@ -36,13 +43,15 @@ type Props = {
 }
 
 export function PromptEditor({ template, background, agentBackground, agentBackgroundVersion, model, promptVersion, inputFields, allFields, locked, onChange, onAddField, insertRef }: Props) {
+  const dict = useFieldDict()
   const ref = useRef<HTMLTextAreaElement>(null)
   const refs = referencedVars(template)
   const undefinedVars = refs.filter((v) => !inputFields.includes(v))
 
   const insert = (field: string) => {
     const el = ref.current
-    const token = `{{${field}}}`
+    const desc = dict.entries.find((e) => e.logicalName === field)?.description
+    const token = desc ? `## ${field} (${desc})\n{{${field}}}\n` : `## ${field}\n{{${field}}}\n`
     const start = el?.selectionStart ?? template.length
     const end = el?.selectionEnd ?? template.length
     onChange({ promptTemplate: template.slice(0, start) + token + template.slice(end) })
@@ -107,12 +116,13 @@ export function PromptEditor({ template, background, agentBackground, agentBackg
 
       <div className="flex flex-col gap-1.5">
         <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
-          <Braces className="size-3.5 text-primary" aria-hidden="true" />
-          裁判系统提示词与 {'{}'} 插入变量
+          <Sparkles className="size-3.5 text-primary" aria-hidden="true" />
+          裁判系统提示词与插入变量
         </span>
         <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-card/60 p-2">
           {inputFields.map((f) => {
             const used = refs.includes(f)
+            const desc = dict.entries.find((e) => e.logicalName === f)?.description
             return (
               <button
                 key={f}
@@ -120,11 +130,16 @@ export function PromptEditor({ template, background, agentBackground, agentBackg
                 disabled={locked}
                 onClick={() => insert(f)}
                 className={cn(
-                  'rounded border px-2 py-1 font-mono text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60 shadow-2xs',
+                  'flex items-center gap-1.5 rounded border px-2 py-1 font-mono text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60 shadow-2xs',
                   used ? 'border-primary/50 bg-primary/10 text-primary font-bold' : 'border-dashed bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground',
                 )}
               >
-                {`{{${f}}}`}
+                <span>{f}</span>
+                {desc ? (
+                  <span className="font-normal text-[10px] text-muted-foreground/90">
+                    · {desc}
+                  </span>
+                ) : null}
               </button>
             )
           })}

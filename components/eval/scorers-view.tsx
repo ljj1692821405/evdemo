@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Eye,
   FileText,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { scorers as initialScorers, type Scorer, type Dimension } from '@/lib/mock-data'
@@ -304,7 +305,7 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
               title={
                 <span className="flex items-center gap-2">
                   {s.name}
-                  <Mono className="text-muted-foreground">{s.id}@v{s.version}</Mono>
+                  <Tag tone="primary" className="font-mono font-semibold">v{s.version}.0</Tag>
                 </span>
               }
               actions={
@@ -357,7 +358,7 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                         agentBackground={agentBackground}
                         agentBackgroundVersion={agent?.backgroundVersion ?? 0}
                         model={s.judgeModel ?? judgeModels[0]}
-                        promptVersion={s.promptVersion ?? `pt_${s.id.replace('sc_', '')}@v1`}
+                        promptVersion={s.promptVersion ? (s.promptVersion.includes('@') ? s.promptVersion.split('@')[1] : s.promptVersion) : `v${s.version}.0`}
                         inputFields={s.inputFields}
                         allFields={dict.names}
                         locked={locked}
@@ -413,19 +414,24 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                               className={cn('flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1.5 text-left', on ? 'border-primary/40 bg-accent/50' : 'border-transparent hover:bg-muted', locked && 'cursor-not-allowed')}
                             >
                               {on ? <X className="size-3 text-muted-foreground" aria-hidden="true" /> : <Plus className="size-3 text-muted-foreground" aria-hidden="true" />}
-                              <Mono className={cn(!on && 'text-muted-foreground')}>{f.logicalName}</Mono>
-                              {on && usesPrompt ? (
-                                linked ? (
-                                  <Tag tone="primary" className="px-1"><Braces className="size-3" aria-hidden="true" /><span className="sr-only">已引用</span></Tag>
-                                ) : (
-                                  <span className="size-1.5 shrink-0 rounded-full bg-warn" role="img" aria-label="未引用" />
-                                )
-                              ) : null}
+                              <div className="flex flex-col items-start min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <Mono className={cn('font-bold', !on && 'text-muted-foreground')}>{f.logicalName}</Mono>
+                                  {on && usesPrompt ? (
+                                    linked ? (
+                                      <Tag tone="primary" className="px-1 text-[10px]">已引用</Tag>
+                                    ) : (
+                                      <span className="size-1.5 shrink-0 rounded-full bg-warn" role="img" aria-label="未引用" />
+                                    )
+                                  ) : null}
+                                </div>
+                                <span className="text-[11px] text-muted-foreground line-clamp-1">{f.description}</span>
+                              </div>
                               <div className="ml-auto flex items-center gap-2">
-                                <div className="h-1 w-16 overflow-hidden rounded-full bg-muted">
+                                <div className="h-1 w-12 overflow-hidden rounded-full bg-muted">
                                   <div className={cn('h-full', f.avgTokens > 2000 ? 'bg-warn' : 'bg-primary/60')} style={{ width: `${Math.min(100, (f.avgTokens / 8100) * 100)}%` }} />
                                 </div>
-                                <Mono className={cn('w-14 text-right text-[11px]', f.avgTokens > 2000 ? 'text-warn' : 'text-muted-foreground')}>{f.avgTokens.toLocaleString()}</Mono>
+                                <Mono className={cn('w-12 text-right text-[11px]', f.avgTokens > 2000 ? 'text-warn' : 'text-muted-foreground')}>{f.avgTokens.toLocaleString()}</Mono>
                               </div>
                             </button>
                             {usesPrompt && on && !locked ? (
@@ -433,9 +439,9 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                                 type="button"
                                 onClick={() => editorRef.current?.insert(f.logicalName)}
                                 aria-label={`插入 ${f.logicalName}`}
-                                className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-card text-muted-foreground hover:border-primary/50 hover:text-primary"
+                                className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-card text-muted-foreground hover:border-primary/50 hover:text-primary shadow-2xs"
                               >
-                                <Braces className="size-3.5" aria-hidden="true" />
+                                <Plus className="size-3.5" aria-hidden="true" />
                               </button>
                             ) : null}
                           </li>
@@ -567,7 +573,9 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                 </div>
                 <div>
                   <span className="text-muted-foreground">提示词版本：</span>
-                  <Mono className="font-bold text-primary">{s.promptVersion || 'pt_v1'}</Mono>
+                  <Tag tone="primary" className="font-mono font-bold">
+                    {s.promptVersion ? (s.promptVersion.includes('@') ? s.promptVersion.split('@')[1] : s.promptVersion) : `v${s.version}.0`}
+                  </Tag>
                 </div>
                 <div className="col-span-2">
                   <span className="text-muted-foreground">挂载输出维度：</span>
