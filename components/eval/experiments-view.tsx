@@ -42,7 +42,7 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
   const { agent } = useScope()
   const caps = useCapabilities()
   const { datasets } = useDatasets()
-  const { findStage } = useStages()
+  const { findStage, findConfigVersion } = useStages()
   const [createdSnaps, setCreatedSnaps] = useState<Record<string, FrozenSnapshot>>({})
   const [exps, setExps] = useState<Experiment[]>(initialExps)
   const [runList, setRunList] = useState<Run[]>(initialRuns)
@@ -242,7 +242,12 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                           <Td>{datasets.find((d) => d.id === s.datasetId)?.name ?? <span className="text-muted-foreground">已删除</span>}</Td>
                           <Td>
                             {s.stageId ? (
-                              <Tag tone="primary">{findStage(s.stageId)?.name ?? s.stageId}</Tag>
+                              <div className="flex flex-col items-start gap-0.5">
+                                <Tag tone="primary">{findStage(s.stageId)?.name ?? s.stageId}</Tag>
+                                {s.configVersionId ? (
+                                  <Mono className="text-[10px] text-muted-foreground">{findConfigVersion(s.configVersionId)?.configVersion}</Mono>
+                                ) : null}
+                              </div>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
@@ -298,9 +303,15 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                   {snapshotLabel(exp.snapshotId)}
                 </Tag>
                 {(() => {
-                  const stageId = snapshots.find((s) => s.id === exp.snapshotId)?.stageId
-                  const stage = findStage(stageId)
-                  return stage ? <Tag tone="pass">{stage.name}</Tag> : null
+                  const snap = snapshots.find((s) => s.id === exp.snapshotId)
+                  const stage = findStage(snap?.stageId)
+                  const cv = findConfigVersion(snap?.configVersionId)
+                  return (
+                    <>
+                      {stage ? <Tag tone="pass">{stage.name}</Tag> : null}
+                      {cv ? <Tag className="font-mono">{cv.configVersion}</Tag> : null}
+                    </>
+                  )
                 })()}
               </span>
             }

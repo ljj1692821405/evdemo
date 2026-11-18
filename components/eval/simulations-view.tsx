@@ -53,7 +53,7 @@ const selectCls = 'h-9 rounded-md border border-input bg-card px-2.5 text-sm foc
 export function SimulationsView() {
   const { datasets } = useDatasets()
   const { agent } = useScope()
-  const { stages, createStage, findStage } = useStages(agent?.id)
+  const { freezeConfigVersion, attachSnapshot, findStage, findConfigVersion, stageOfConfigVersion } = useStages(agent?.id)
   const { assets, currentOf } = useCapabilities()
   const [jobs, setJobs] = useState<SimJob[]>(initialJobs)
   const [snaps, setSnaps] = useState<Snapshot[]>(initialSnaps)
@@ -86,29 +86,30 @@ export function SimulationsView() {
     jobs.forEach((j) => {
       if (j.snapshotId && !snaps.some((s) => s.id === j.snapshotId)) {
         setSnaps((s) => [
-          { id: j.snapshotId!, jobId: j.id, datasetId: j.datasetId, cases: j.total - j.failed, turns: Math.round((j.total - j.failed) * 1.8), frozenAt: '刚刚', status: j.failed ? 'partial_failed' : 'completed', missingCases: j.failed, stageId: j.stageId },
+          { id: j.snapshotId!, jobId: j.id, datasetId: j.datasetId, cases: j.total - j.failed, turns: Math.round((j.total - j.failed) * 1.8), frozenAt: '刚刚', status: j.failed ? 'partial_failed' : 'completed', missingCases: j.failed, stageId: j.stageId, configVersionId: j.configVersionId },
           ...s,
         ])
+        if (j.configVersionId) attachSnapshot(j.configVersionId, j.snapshotId)
       }
     })
-  }, [jobs, snaps])
+  }, [jobs, snaps, attachSnapshot])
 
   const start = () => {
     const ds = datasets.find((d) => d.id === dsId) ?? datasets[0]
     if (!ds) return
     const id = `job_${1108 + jobs.length - initialJobs.length}`
 
-    // 仿真前自动冻结当前配置为版本阶段
+    // 仿真前在当前阶段内自动冻结配置版本（配置未变则复用）
     let stageId: string | undefined
+    let configVersionId: string | undefined
     if (agent) {
       const cfg = currentOf(agent.id)
       const items = cfg ? resolveConfig(cfg, assets) : []
       const target = agent.models.find((m) => m.role === 'target')?.model ?? '—'
-      const stage = createStage({
+      const cv = freezeConfigVersion({
         agentId: agent.id,
-        name: `w${stages.length + 1} 阶段`,
+        configVersion: `${agent.code}@${cfg?.version ?? 'v1.0'}`,
         frozenAt: '刚刚',
-        configVersion: cfg?.version ?? 'v1.0',
         targetModel: target,
         backgroundVersion: agent.backgroundVersion ?? 0,
         skillVersionRefs: items
@@ -118,10 +119,13 @@ export function SimulationsView() {
           .filter((i) => i.asset.kind === 'tool')
           .map((i) => ({ code: i.asset.code, name: i.asset.name, version: i.ver.version })),
       })
-      stageId = stage.id
+      if (cv) {
+        configVersionId = cv.id
+        stageId = stageOfConfigVersion(cv.id)?.id
+      }
     }
 
-    setJobs((j) => [{ id, datasetId: ds.id, script, status: 'pending', done: 0, total: ds.caseCount, failed: 0, startedAt: '刚刚', stageId, errors: [] }, ...j])
+    setJobs((j) => [{ id, datasetId: ds.id, script, status: 'pending', done: 0, total: ds.caseCount, failed: 0, startedAt: '刚刚', stageId, configVersionId, errors: [] }, ...j])
   }
 
   return (
@@ -177,7 +181,12 @@ export function SimulationsView() {
                     <Td>{datasetName(ds?.name)}</Td>
                     <Td>
                       {j.stageId ? (
-                        <Tag tone="primary">{findStage(j.stageId)?.name ?? j.stageId}</Tag>
+                        <div className="flex flex-col items-start gap-0.5">
+                          <Tag tone="primary">{findStage(j.stageId)?.name ?? j.stageId}</Tag>
+                          {j.configVersionId ? (
+                            <Mono className="text-[10px] text-muted-foreground">{findConfigVersion(j.configVersionId)?.configVersion}</Mono>
+                          ) : null}
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -289,7 +298,12 @@ export function SimulationsView() {
                     <Td>{datasetName(ds?.name)}</Td>
                     <Td>
                       {s.stageId ? (
-                        <Tag tone="primary">{findStage(s.stageId)?.name ?? s.stageId}</Tag>
+                        <div className="flex flex-col items-start gap-0.5">
+                          <Tag tone="primary">{findStage(s.stageId)?.name ?? s.stageId}</Tag>
+                          {s.configVersionId ? (
+                            <Mono className="text-[10px] text-muted-foreground">{findConfigVersion(s.configVersionId)?.configVersion}</Mono>
+                          ) : null}
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
