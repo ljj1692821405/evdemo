@@ -290,7 +290,7 @@ function AssetList({
   return (
     <div className="rounded-md border">
       <h4 className="flex items-center gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
-        <span className="inline-flex h-6 items-center gap-1.5 rounded-md border px-2">
+        <span className="inline-flex h-6 w-28 items-center justify-center gap-1.5 rounded-md border px-2">
           <Icon className="size-3.5" aria-hidden="true" />
           {title}
           <span>({items.length})</span>
@@ -299,7 +299,7 @@ function AssetList({
           <button
             type="button"
             onClick={onAdd}
-            className="ml-auto inline-flex h-6 items-center gap-1 rounded-md border border-input bg-card px-2 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="ml-auto inline-flex h-6 w-28 items-center justify-center gap-1 rounded-md border border-input bg-card px-2 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <Plus className="size-3.5" aria-hidden="true" />
             登记
