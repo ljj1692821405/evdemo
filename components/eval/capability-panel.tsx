@@ -12,7 +12,6 @@ import {
   resolveConfig,
   sourceLabel,
   toFrozen,
-  type AssetKind,
   type AssetSource,
   type ResolvedItem,
 } from '@/lib/capability-data'
@@ -124,70 +123,49 @@ export function CapabilityPanel({ agentId, agentCode }: { agentId: string; agent
             onBack={() => setOpenAsset(undefined)}
           />
         ) : tab === 'list' ? (
-          <div className="flex flex-col gap-3">
-            {isCurrent && !form ? (
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <p className="text-pretty">
-                  无法自动采集明细的 Agent，可通过 <Mono className="text-foreground">POST /api/v1/agents/{agentCode}/capabilities</Mono> 上报，或手动登记。
-                </p>
-                <Btn size="sm" onClick={() => setForm({ kind: 'skill', code: '', name: '', source: 'manual', intro: '', remark: '' })}>
-                  <Plus className="size-3.5" aria-hidden="true" />
-                  登记 Skill / Tool
-                </Btn>
-              </div>
-            ) : null}
-            {form ? (
-              <form
-                className="flex flex-col gap-2 rounded-md border bg-muted/40 p-3"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  if (!form.name || !codeRe.test(form.code) || codeTaken || !form.intro) return
-                  store.registerAsset(agentId, form)
-                  setForm(null)
-                }}
-              >
-                <div className="flex flex-wrap gap-2">
-                  <select aria-label="类型" className={cn(inputCls, 'w-24')} value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as AssetKind })}>
-                    <option value="skill">Skill</option>
-                    <option value="tool">Tool</option>
-                  </select>
-                  <select aria-label="来源" className={cn(inputCls, 'w-28')} value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value as AssetSource })}>
-                    {(Object.keys(sourceLabel) as AssetSource[]).map((s) => (
-                      <option key={s} value={s}>{sourceLabel[s]}</option>
-                    ))}
-                  </select>
-                  <input aria-label="名称" className={cn(inputCls, 'min-w-32 flex-1')} placeholder="名称" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-                  <input aria-label="标识" className={cn(inputCls, 'min-w-32 flex-1 font-mono')} placeholder="code，如 doc.translate" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.trim() })} />
-                </div>
-                {codeTaken ? <p className="text-xs text-fail">该 Agent 下已存在同名 {kindLabel[form.kind]}</p> : null}
-                <input aria-label="功能介绍" className={inputCls} placeholder="功能介绍（必填）" value={form.intro} onChange={(e) => setForm({ ...form, intro: e.target.value })} />
-                <input aria-label="用途备注" className={inputCls} placeholder="用途备注" value={form.remark} onChange={(e) => setForm({ ...form, remark: e.target.value })} />
-                {form.kind === 'skill' ? (
-                  <div className="flex flex-wrap gap-2">
-                    <input aria-label="触发场景" className={cn(inputCls, 'flex-1')} placeholder="触发场景，逗号分隔" onChange={(e) => setForm({ ...form, triggers: e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })} />
-                    <input aria-label="依赖 Tool" className={cn(inputCls, 'flex-1 font-mono')} placeholder="依赖 Tool code，逗号分隔" onChange={(e) => setForm({ ...form, uses: e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })} />
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    <input aria-label="输入" className={cn(inputCls, 'flex-1 font-mono')} placeholder="输入 schema" onChange={(e) => setForm({ ...form, input: e.target.value })} />
-                    <input aria-label="输出" className={cn(inputCls, 'flex-1 font-mono')} placeholder="输出 schema" onChange={(e) => setForm({ ...form, output: e.target.value })} />
-                  </div>
-                )}
-                <div className="flex items-center justify-end gap-2">
-                  <span className="mr-auto text-[11px] text-muted-foreground">登记后生成新配置版本 {current ? `（${current.version} → 下一版）` : 'v1.0'}</span>
-                  <Btn size="sm" variant="ghost" onClick={() => setForm(null)}>取消</Btn>
-                  <Btn size="sm" variant="primary" type="submit" disabled={!form.name || !codeRe.test(form.code) || codeTaken || !form.intro}>登记</Btn>
-                </div>
-              </form>
-            ) : null}
-            {items.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">尚未登记任何 Skill / Tool</p>
-            ) : (
-              <div className="grid gap-3 xl:grid-cols-2">
-                <AssetList title="Skill" icon={Puzzle} items={skills} onOpen={setOpenAsset} onDelete={isCurrent ? store.detachAsset : undefined} />
-                <AssetList title="Tool" icon={Wrench} items={tools} onOpen={setOpenAsset} onDelete={isCurrent ? store.detachAsset : undefined} />
-              </div>
-            )}
+          <div className="grid gap-3 xl:grid-cols-2">
+            <AssetList
+              title="Skill"
+              icon={Puzzle}
+              items={skills}
+              onOpen={setOpenAsset}
+              onDelete={isCurrent ? store.detachAsset : undefined}
+              onAdd={isCurrent ? () => setForm({ kind: 'skill', code: '', name: '', source: 'manual', intro: '', remark: '' }) : undefined}
+            >
+              {form?.kind === 'skill' ? (
+                <RegisterForm
+                  form={form}
+                  setForm={setForm}
+                  codeTaken={codeTaken}
+                  nextVersion={current?.version}
+                  onSubmit={() => {
+                    store.registerAsset(agentId, form)
+                    setForm(null)
+                  }}
+                />
+              ) : null}
+            </AssetList>
+            <AssetList
+              title="Tool"
+              icon={Wrench}
+              items={tools}
+              onOpen={setOpenAsset}
+              onDelete={isCurrent ? store.detachAsset : undefined}
+              onAdd={isCurrent ? () => setForm({ kind: 'tool', code: '', name: '', source: 'manual', intro: '', remark: '' }) : undefined}
+            >
+              {form?.kind === 'tool' ? (
+                <RegisterForm
+                  form={form}
+                  setForm={setForm}
+                  codeTaken={codeTaken}
+                  nextVersion={current?.version}
+                  onSubmit={() => {
+                    store.registerAsset(agentId, form)
+                    setForm(null)
+                  }}
+                />
+              ) : null}
+            </AssetList>
           </div>
         ) : tab === 'deps' ? (
           <DependencyView skills={skills} tools={tools} agentCode={agentCode} version={viewing?.version} onOpen={setOpenAsset} />
@@ -198,6 +176,60 @@ export function CapabilityPanel({ agentId, agentCode }: { agentId: string; agent
         )}
       </div>
     </section>
+  )
+}
+
+function RegisterForm({
+  form,
+  setForm,
+  codeTaken,
+  nextVersion,
+  onSubmit,
+}: {
+  form: NewAsset
+  setForm: (v: NewAsset | null) => void
+  codeTaken: boolean
+  nextVersion?: string
+  onSubmit: () => void
+}) {
+  const valid = !!form.name && codeRe.test(form.code) && !codeTaken && !!form.intro
+  return (
+    <form
+      className="flex flex-col gap-2 border-b bg-muted/40 p-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (valid) onSubmit()
+      }}
+    >
+      <div className="flex flex-wrap gap-2">
+        <select aria-label="来源" className={cn(inputCls, 'w-28')} value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value as AssetSource })}>
+          {(Object.keys(sourceLabel) as AssetSource[]).map((s) => (
+            <option key={s} value={s}>{sourceLabel[s]}</option>
+          ))}
+        </select>
+        <input aria-label="名称" className={cn(inputCls, 'min-w-28 flex-1')} placeholder="名称" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <input aria-label="标识" className={cn(inputCls, 'min-w-28 flex-1 font-mono')} placeholder="code，如 doc.translate" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.trim() })} />
+      </div>
+      {codeTaken ? <p className="text-xs text-fail">该 Agent 下已存在同名 {kindLabel[form.kind]}</p> : null}
+      <input aria-label="功能介绍" className={inputCls} placeholder="功能介绍（必填）" value={form.intro} onChange={(e) => setForm({ ...form, intro: e.target.value })} />
+      <input aria-label="用途备注" className={inputCls} placeholder="用途备注" value={form.remark} onChange={(e) => setForm({ ...form, remark: e.target.value })} />
+      {form.kind === 'skill' ? (
+        <div className="flex flex-wrap gap-2">
+          <input aria-label="触发场景" className={cn(inputCls, 'flex-1')} placeholder="触发场景，逗号分隔" onChange={(e) => setForm({ ...form, triggers: e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })} />
+          <input aria-label="依赖 Tool" className={cn(inputCls, 'flex-1 font-mono')} placeholder="依赖 Tool code，逗号分隔" onChange={(e) => setForm({ ...form, uses: e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })} />
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <input aria-label="输入" className={cn(inputCls, 'flex-1 font-mono')} placeholder="输入 schema" onChange={(e) => setForm({ ...form, input: e.target.value })} />
+          <input aria-label="输出" className={cn(inputCls, 'flex-1 font-mono')} placeholder="输出 schema" onChange={(e) => setForm({ ...form, output: e.target.value })} />
+        </div>
+      )}
+      <div className="flex items-center justify-end gap-2">
+        <span className="mr-auto text-[11px] text-muted-foreground">登记后生成新配置版本 {nextVersion ? `（${nextVersion} → 下一版）` : 'v1.0'}</span>
+        <Btn size="sm" variant="ghost" onClick={() => setForm(null)}>取消</Btn>
+        <Btn size="sm" variant="primary" type="submit" disabled={!valid}>登记</Btn>
+      </div>
+    </form>
   )
 }
 
@@ -246,12 +278,16 @@ function AssetList({
   items,
   onOpen,
   onDelete,
+  onAdd,
+  children,
 }: {
   title: string
   icon: typeof Puzzle
   items: ResolvedItem[]
   onOpen: (id: string) => void
   onDelete?: (asset: ResolvedItem['asset']) => void
+  onAdd?: () => void
+  children?: React.ReactNode
 }) {
   return (
     <div className="rounded-md border">
@@ -259,7 +295,18 @@ function AssetList({
         <Icon className="size-3.5" aria-hidden="true" />
         {title}
         <span>({items.length})</span>
+        {onAdd ? (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Plus className="size-3" aria-hidden="true" />
+            登记
+          </button>
+        ) : null}
       </h4>
+      {children}
       <ul>
         {items.length === 0 ? <li className="px-3 py-5 text-center text-xs text-muted-foreground">暂无</li> : null}
         {items.map(({ asset, ver }) => {
