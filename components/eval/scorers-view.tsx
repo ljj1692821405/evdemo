@@ -406,63 +406,53 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                     </Field>
                   ) : null}
 
-                  {/* 预期输出字段 (Expected Output Schema) */}
-                  <Field label="预期输出字段 (Output Contract)">
-                    <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-transparent p-2.5">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-0.5 text-xs font-mono font-bold text-foreground">
-                          <span className="size-1.5 rounded-full bg-pass" />
-                          score
-                          <Tag tone="pass" className="font-mono text-[9px] px-1">0/1</Tag>
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-0.5 text-xs font-mono font-bold text-foreground">
-                          <span className="size-1.5 rounded-full bg-pass" />
-                          pass
-                          <Tag tone="pass" className="font-mono text-[9px] px-1">bool</Tag>
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-0.5 text-xs font-mono font-bold text-foreground">
-                          <span className="size-1.5 rounded-full bg-primary" />
-                          evidence
-                          <Tag tone="primary" className="font-mono text-[9px] px-1">string</Tag>
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-0.5 text-xs font-mono font-bold text-foreground">
-                          <span className="size-1.5 rounded-full bg-warn" />
-                          flaw_type
-                          <Tag tone="warn" className="font-mono text-[9px] px-1">enum?</Tag>
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-muted-foreground">
-                        裁判执行后严格按 JSON Schema 输出得分、通过判定与证据链理由
+                  {/* 预期输出字段 (纯净浅蓝原点与线框，无AI味多余颜色) */}
+                  <Field label="预期输出字段">
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-transparent p-2.5">
+                      <span className="inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono font-medium text-foreground">
+                        <span className="size-1.5 rounded-full bg-primary" />
+                        score
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono font-medium text-foreground">
+                        <span className="size-1.5 rounded-full bg-primary" />
+                        pass
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono font-medium text-foreground">
+                        <span className="size-1.5 rounded-full bg-primary" />
+                        evidence
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono font-medium text-foreground">
+                        <span className="size-1.5 rounded-full bg-primary" />
+                        flaw_type
                       </span>
                     </div>
                   </Field>
 
-                  {/* 调试台 (支持绑定任意一条 Case 尝试，结果不保存) */}
-                  <Field label="单条 Case 快速调试台 (试跑不保存)">
+                  {/* 调试台 (运行试跑与Case选择同行) */}
+                  <Field label="单条 Case 快速调试台">
                     <div className="flex flex-col gap-2.5 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium text-muted-foreground">绑定样本 Case:</span>
-                          <select
-                            value={testCaseId}
-                            onChange={(e) => {
-                              setTestCaseId(e.target.value)
-                              setDebugResult(null)
-                            }}
-                            className="h-7.5 rounded-md border border-input bg-card px-2 font-mono text-xs text-foreground font-semibold"
-                          >
-                            {goldenCases.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.id} · {c.query[0]?.slice(0, 22) || '测试样本'}...
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground shrink-0">Case:</span>
+                        <select
+                          value={testCaseId}
+                          onChange={(e) => {
+                            setTestCaseId(e.target.value)
+                            setDebugResult(null)
+                          }}
+                          className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 font-mono text-xs text-foreground font-semibold"
+                        >
+                          {goldenCases.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.id} · {c.query[0]?.slice(0, 24) || '测试样本'}...
+                            </option>
+                          ))}
+                        </select>
 
                         <Btn
                           size="sm"
                           variant="primary"
                           disabled={isDebugging}
+                          className="shrink-0 h-8"
                           onClick={() => {
                             setIsDebugging(true)
                             setTimeout(() => {
@@ -478,7 +468,7 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                           }}
                         >
                           <Play className="size-3" />
-                          {isDebugging ? '裁判打分中...' : '运行试跑'}
+                          {isDebugging ? '试跑中...' : '运行试跑'}
                         </Btn>
                       </div>
 
