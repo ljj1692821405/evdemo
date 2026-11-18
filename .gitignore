@@ -25,3 +25,18 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ===== 本地敏感配置：含 cookie / llm api_key / PG 密码 / OSS AK·SK，禁止提交或外传 =====
+config.json
+# 允许提交脱敏模板（若后续新增 config.example.json，可正常入库）
+!config.example.json
+
+# ===== backend (Python / FastAPI) =====
+# 允许提交环境变量模板
+!backend/.env.example
+__pycache__/
+*.py[cod]
+backend/.venv/
+backend/venv/
+.pytest_cache/
+

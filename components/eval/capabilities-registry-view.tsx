@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import {
   Plus,
   Image as ImageIcon,
@@ -73,10 +73,31 @@ export function CapabilitiesRegistryView() {
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
   const [viewTab, setViewTab] = useState<'overview' | 'inputs' | 'dimensions' | 'execution' | 'playground'>('overview')
 
+  // 加载模型列表
+  React.useEffect(() => {
+    if (viewTab === 'playground') {
+      import('@/lib/api-client').then(({ llmListModels }) => {
+        llmListModels()
+          .then((models) => {
+            setAvailableModels(models)
+            if (models.length > 0 && !selectedModel) {
+              setSelectedModel(models[0])
+            }
+          })
+          .catch(() => {
+            // 静默失败，保留空列表
+          })
+      })
+    }
+  }, [viewTab])
+
   // Playground 状态
   const [playgroundRows, setPlaygroundRows] = useState<PlaygroundRow[]>(() => rowsFromCap(capabilities[0]))
   const [debugResult, setDebugResult] = useState<RegisteredCapability['sampleOutput'] | null>(null)
   const [isDebugRunning, setIsDebugRunning] = useState(false)
+  const [selectedModel, setSelectedModel] = useState<string>('')
+  const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [streamingContent, setStreamingContent] = useState<string>('')
 
   const filteredCaps = capabilities.filter((c) => {
     const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.code.toLowerCase().includes(searchQuery.toLowerCase()) || c.intro.includes(searchQuery)
@@ -112,18 +133,64 @@ export function CapabilitiesRegistryView() {
     file.text().then((text) => updatePlaygroundRow(id, { value: text, kind: 'text', fileName: file.name }))
   }
 
-  const runPlaygroundDebug = () => {
+  const runPlaygroundDebug = async () => {
     setIsDebugRunning(true)
-    setTimeout(() => {
-      setIsDebugRunning(false)
-      setDebugResult(
-        currentCap?.sampleOutput ?? {
-          latencyMs: 1250,
-          metrics: { score: 4.8, pass: true },
-          evidence: 'Playground 模拟执行完成：字段解析与契约匹配正常。',
+    setStreamingContent('')
+    setDebugResult(null)
+
+    try {
+      // 1. 组装输入数据为 JSON 字符串
+      const inputData: Record<string, string> = {}
+      for (const row of playgroundRows) {
+        if (row.key && row.value) {
+          inputData[row.key] = row.value
+        }
+      }
+      const inputJson = JSON.stringify(inputData, null, 2)
+
+      // 2. 发起流式调用
+      const { llmChatStream } = await import('@/lib/api-client')
+      const startTime = Date.now()
+      let fullContent = ''
+      let usage: any = null
+
+      for await (const event of llmChatStream({
+        messages: [
+          { role: 'system', content: '你是一个评测裁判，会根据输入数据给出分析和判定。' },
+          { role: 'user', content: `请分析以下输入数据并给出评价：\n\n${inputJson}` },
+        ],
+        model: selectedModel || undefined,
+        temperature: 0.2,
+      })) {
+        if (event.event === 'delta' && event.content) {
+          fullContent += event.content
+          setStreamingContent(fullContent)
+        } else if (event.event === 'usage') {
+          usage = event
+        } else if (event.event === 'error') {
+          throw new Error(event.message || 'LLM 调用失败')
+        }
+      }
+
+      const latency = Date.now() - startTime
+      setDebugResult({
+        latencyMs: latency,
+        metrics: {
+          success: true,
+          tokens: usage ? usage.total_tokens : 0,
         },
-      )
-    }, 600)
+        evidence: fullContent || '（无输出）',
+      })
+    } catch (error: any) {
+      setDebugResult({
+        latencyMs: 0,
+        metrics: { success: false },
+        evidence: `调用失败：${error.message || String(error)}`,
+      })
+    } finally {
+      setIsDebugRunning(false)
+      setStreamingContent('')
+    }
   }
 
   const handlePublish = () => {
@@ -516,8 +583,27 @@ export function CapabilitiesRegistryView() {
                         ) : null}
                       </div>
 
-                      <div className="pt-2 border-t flex justify-end">
-                        <Btn variant="primary" size="sm" onClick={runPlaygroundDebug} disabled={isDebugRunning}>
+                      <div className="pt-2 border-t flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 flex-1">
+                          <span className="text-xs text-muted-foreground shrink-0">裁判模型：</span>
+                          <select
+                            value={selectedModel}
+                            onChange={(e) => setSelectedModel(e.target.value)}
+                            className="h-8 flex-1 min-w-0 rounded border border-input bg-background px-2 text-xs font-mono"
+                            disabled={isDebugRunning || availableModels.length === 0}
+                          >
+                            {availableModels.length === 0 ? (
+                              <option value="">加载中...</option>
+                            ) : (
+                              availableModels.map((m) => (
+                                <option key={m} value={m}>
+                                  {m}
+                                </option>
+                              ))
+                            )}
+                          </select>
+                        </div>
+                        <Btn variant="primary" size="sm" onClick={runPlaygroundDebug} disabled={isDebugRunning || !selectedModel}>
                           <Play className="size-3.5" />
                           {isDebugRunning ? '正在执行...' : '运行调试'}
                         </Btn>
@@ -536,32 +622,31 @@ export function CapabilitiesRegistryView() {
                         ) : null}
                       </div>
 
-                      {debugResult ? (
+                      {streamingContent || debugResult ? (
                         <div className="space-y-3">
-                          <div className="flex items-center gap-2 rounded border border-pass/30 bg-pass-soft px-3 py-2">
-                            <CheckCircle2 className="size-4 text-pass" />
-                            <span className="text-xs font-semibold text-pass">能力已打通</span>
-                            <Mono className="ml-auto text-[11px] text-pass">
-                              已接收 {playgroundRows.length} 个输入
-                              {playgroundRows.some((r) => r.kind === 'image') ? ` · 含 ${playgroundRows.filter((r) => r.kind === 'image').length} 张图片` : ''}
-                            </Mono>
-                          </div>
+                          {streamingContent ? (
+                            <div className="rounded border border-primary/30 bg-primary-soft p-3">
+                              <div className="text-[11px] font-semibold text-primary mb-2">流式输出中...</div>
+                              <pre className="text-xs text-foreground leading-relaxed whitespace-pre-wrap font-mono">{streamingContent}</pre>
+                            </div>
+                          ) : null}
 
-                          <div className="grid grid-cols-2 gap-2">
-                            {Object.entries(debugResult.metrics).map(([key, val]) => (
-                              <div key={key} className="rounded border bg-muted/30 p-2.5">
-                                <div className="text-[10px] text-muted-foreground font-mono">{key}</div>
-                                <div className="text-base font-bold font-mono text-foreground mt-0.5">
-                                  {typeof val === 'boolean' ? (val ? 'TRUE' : 'FALSE') : val}
-                                </div>
+                          {debugResult ? (
+                            <>
+                              <div className="flex items-center gap-2 rounded border border-pass/30 bg-pass-soft px-3 py-2">
+                                <CheckCircle2 className="size-4 text-pass" />
+                                <span className="text-xs font-semibold text-pass">LLM 调用完成</span>
+                                <Mono className="ml-auto text-[11px] text-pass">
+                                  {debugResult.latencyMs}ms · {debugResult.metrics.tokens || 0} tokens
+                                </Mono>
                               </div>
-                            ))}
-                          </div>
 
-                          <div className="rounded bg-muted/40 p-3 space-y-1">
-                            <div className="text-[11px] font-semibold text-primary">证据链</div>
-                            <p className="text-xs text-foreground leading-relaxed">{debugResult.evidence}</p>
-                          </div>
+                              <div className="rounded bg-muted/40 p-3 space-y-1">
+                                <div className="text-[11px] font-semibold text-primary">完整输出</div>
+                                <pre className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{debugResult.evidence}</pre>
+                              </div>
+                            </>
+                          ) : null}
                         </div>
                       ) : (
                         <div className="flex items-center justify-center p-8 text-muted-foreground">
