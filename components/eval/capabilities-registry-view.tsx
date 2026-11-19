@@ -922,7 +922,7 @@ export function CapabilitiesRegistryView() {
                               {modelCatalog.length > 0 ? (
                                 modelCatalog.map((m) => {
                                   const ok = coversModalities(m, neededModalities)
-                                  const caps = m.capabilities.join('+')
+                                  const caps = m.capabilities.join('，')
                                   const missing = [...neededModalities].filter((x) => !m.capabilities.includes(x))
                                   return (
                                     <option key={m.id} value={m.id} disabled={!ok}>
