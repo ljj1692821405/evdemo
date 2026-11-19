@@ -40,6 +40,9 @@ backend/.venv/
 backend/venv/
 .pytest_cache/
 
+# ===== 本地快速启动命令（开发用，不上传） =====
+START.md
+
 # ===== 设计文档（不上传）=====
 评测能力系统架构设计总结.md
 

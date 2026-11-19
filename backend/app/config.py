@@ -109,6 +109,55 @@ class ServerSettings:
     api_token: str
 
 
+@dataclass(frozen=True)
+class SimSettings:
+    """Agent 仿真服务（被评测的对象）。
+
+    凭据来自 config.json 顶层的 base_url / cookie（浏览器抓包得到的会话 Cookie），
+    与 llm（裁判用）是两套独立的上游。cookie 过期需重新抓取替换。
+    """
+    base_url: str
+    cookie: str
+    agent_id: str
+    timeout: float
+    max_turns: int
+
+    @property
+    def ready(self) -> bool:
+        return bool(self.base_url and self.cookie)
+
+    @property
+    def masked_cookie(self) -> str:
+        if len(self.cookie) <= 16:
+            return "••••"
+        return f"{self.cookie[:10]}••••{self.cookie[-6:]}"
+
+
+@dataclass(frozen=True)
+class FeishuSettings:
+    """飞书网页扫码登录（OAuth 2.0 授权码模式）。"""
+    app_id: str
+    app_secret: str
+    redirect_uri: str
+    # 端点可配置，便于飞书侧调整或私有化部署时替换
+    authorize_url: str = "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
+    token_url: str = "https://open.feishu.cn/open-apis/authen/v2/oauth/token"
+    userinfo_url: str = "https://open.feishu.cn/open-apis/authen/v1/user_info"
+    # 会话有效期（小时）
+    session_hours: int = 24 * 7
+
+    @property
+    def ready(self) -> bool:
+        """凭据是否齐备。未配置时前端自动退回本地模拟登录，避免开发环境被锁死。"""
+        return bool(self.app_id and self.app_secret)
+
+    @property
+    def masked_secret(self) -> str:
+        if len(self.app_secret) <= 8:
+            return "••••"
+        return f"{self.app_secret[:4]}••••{self.app_secret[-4:]}"
+
+
 def _section(*names: str) -> dict:
     """按候选 key 顺序取配置段，容忍 pg / Postgre / postgres 等写法差异。"""
     cfg = raw_config()
@@ -170,7 +219,47 @@ def server_settings() -> ServerSettings:
     )
 
 
+@lru_cache(maxsize=1)
+def sim_settings() -> SimSettings:
+    """Agent 仿真上游：凭据取自 config.json 顶层（非某个子段）。"""
+    cfg = raw_config()
+    return SimSettings(
+        base_url=(os.getenv("SIM_BASE_URL") or str(cfg.get("base_url") or "")).strip().rstrip("/"),
+        cookie=(os.getenv("SIM_COOKIE") or str(cfg.get("cookie") or "")).strip(),
+        agent_id=(os.getenv("SIM_AGENT_ID") or str(cfg.get("agent_id") or "skill-edit-agent")).strip(),
+        timeout=float(os.getenv("SIM_TIMEOUT", "60") or 60),
+        max_turns=int(os.getenv("SIM_MAX_TURNS", "10") or 10),
+    )
+
+
+@lru_cache(maxsize=1)
+def feishu_settings() -> FeishuSettings:
+    sec = _section("feishu", "lark", "Feishu")
+    return FeishuSettings(
+        app_id=_pick("FEISHU_APP_ID", sec, "app_id"),
+        app_secret=_pick("FEISHU_APP_SECRET", sec, "app_secret"),
+        redirect_uri=_pick(
+            "FEISHU_REDIRECT_URI", sec, "redirect_uri",
+            # 注意是前端页面路由，不是后端 /api/auth/... 接口
+            "http://localhost:3000/auth/feishu/callback",
+        ),
+        authorize_url=_pick(
+            "FEISHU_AUTHORIZE_URL", sec, "authorize_url",
+            "https://accounts.feishu.cn/open-apis/authen/v1/authorize",
+        ),
+        token_url=_pick(
+            "FEISHU_TOKEN_URL", sec, "token_url",
+            "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
+        ),
+        userinfo_url=_pick(
+            "FEISHU_USERINFO_URL", sec, "userinfo_url",
+            "https://open.feishu.cn/open-apis/authen/v1/user_info",
+        ),
+        session_hours=int(os.getenv("FEISHU_SESSION_HOURS", "168") or 168),
+    )
+
+
 def reload_config() -> None:
     """清空缓存，用于 PUT /api/admin/reload 热重载配置。"""
-    for fn in (raw_config, llm_settings, pg_settings, oss_settings, server_settings):
+    for fn in (raw_config, llm_settings, pg_settings, oss_settings, server_settings, sim_settings, feishu_settings):
         fn.cache_clear()

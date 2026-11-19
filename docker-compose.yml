@@ -1,0 +1,70 @@
+# 评测平台 · 本地/单机部署编排
+#
+# 用法：
+#   docker compose up -d --build        启动
+#   docker compose logs -f backend      看日志
+#   docker compose down                 停止（数据卷保留）
+#
+# 说明：config.json 含真实凭据，不进镜像，用 volume 只读挂载覆盖。
+# 首次启动前先在本机执行一次 `python backend/init_db.py` 建表。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: evdemo-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-eval}
+      POSTGRES_PASSWORD: ${PG_PWD:-eval_dev_pwd}
+      POSTGRES_DB: ${PG_DB:-eval_platform}
+      TZ: Asia/Shanghai
+    ports:
+      # 只绑本机，避免默认暴露到局域网
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-eval} -d ${PG_DB:-eval_platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: evdemo-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # 容器内连服务名 postgres，不是 127.0.0.1
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_USER: ${PG_USER:-eval}
+      PG_PWD: ${PG_PWD:-eval_dev_pwd}
+      PG_DB: ${PG_DB:-eval_platform}
+      # LLM / 飞书凭据从 .env 注入，不写死在这里
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      SIM_BASE_URL: ${SIM_BASE_URL:-}
+      SIM_COOKIE: ${SIM_COOKIE:-}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # 只读挂载：容器内改不了宿主配置，避免误改
+      - ./config.json:/app/../config.json:ro
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0 --port 8000
+      --workers 2
+      --proxy-headers --forwarded-allow-ips='*'
+
+volumes:
+  pgdata:

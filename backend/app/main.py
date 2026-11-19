@@ -10,8 +10,17 @@ from fastapi.responses import JSONResponse
 
 from . import __version__
 from .config import server_settings
+from .middleware.tenant_middleware import TenantMiddleware
 from .responses import ServiceError, fail
 from .routers import llm, oss, pg, system
+from .routers import (
+    auth_router,
+    dataset_router,
+    flow_config_router,
+    judge_router,
+    result_router,
+    task_router,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 log = logging.getLogger("eval.backend")
@@ -34,6 +43,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # 租户上下文：解析 x-org-id / x-product-line-id / x-agent-id
+    app.add_middleware(TenantMiddleware)
 
     @app.middleware("http")
     async def token_guard(request: Request, call_next):
@@ -52,6 +63,15 @@ def create_app() -> FastAPI:
     app.include_router(llm.router)
     app.include_router(pg.router)
     app.include_router(oss.router)
+
+    # 评测平台 API 路由
+    app.include_router(auth_router.router)
+    app.include_router(flow_config_router.router)
+    app.include_router(task_router.router)
+    app.include_router(result_router.router)
+    app.include_router(dataset_router.router)
+    app.include_router(judge_router.router)
+
     return app
 
 

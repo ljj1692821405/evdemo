@@ -1,0 +1,13 @@
+# 镜像不需要的东西：本地环境、测试产物、凭据
+.env
+.env.*
+*.pyc
+__pycache__/
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+.git
+.gitignore
+**/*_test.py
+!requirements.txt

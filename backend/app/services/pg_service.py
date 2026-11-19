@@ -45,6 +45,30 @@ def query(sql: str, params: tuple[Any, ...] | None = None, limit: int = 200) -> 
         raise ServiceError(f"PostgreSQL 查询失败：{exc}", 502) from exc
 
 
+def execute(
+    sql: str,
+    params: tuple[Any, ...] | None = None,
+    fetch: bool = False,
+    limit: int = 200,
+) -> list[dict[str, Any]] | int:
+    """执行写 SQL（INSERT / UPDATE / DELETE）。
+
+    fetch=False 时返回受影响行数（rowcount）；
+    fetch=True 时返回 RETURNING 的结果行（配合 RETURNING 子句使用）。
+    事务由 with psycopg.connect(...) 自动提交。
+    """
+    _require_driver()
+    try:
+        with psycopg.connect(_conninfo(), row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                if fetch:
+                    return list(cur.fetchmany(limit))
+                return cur.rowcount
+    except psycopg.Error as exc:  # type: ignore[union-attr]
+        raise ServiceError(f"PostgreSQL 执行失败：{exc}", 502) from exc
+
+
 def probe() -> dict[str, Any]:
     """分层探测：TCP → 登录 → 元信息，返回每一步结果，便于定位问题。"""
     cfg = pg_settings()

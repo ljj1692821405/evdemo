@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
-"""评测平台后端 · 运行时依赖"""
+# 评测平台后端 · 运行时依赖
+# 注意：本文件是 pip requirements 格式，只能写 # 注释，不能写 Python docstring
 fastapi>=0.115,<1.0
 uvicorn[standard]>=0.32,<1.0
 pydantic>=2.9,<3.0

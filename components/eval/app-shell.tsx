@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   Database,
   BookA,
@@ -17,9 +17,11 @@ import {
   Server,
   FileCheck2,
   ChevronDown,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLines, useScope } from '@/lib/tenant-store'
+import { useAuth } from '@/lib/auth-store'
 
 const selectCls =
   'h-7 w-full rounded border border-sidebar-border bg-sidebar-accent/40 px-1.5 text-xs text-sidebar-accent-foreground focus-visible:outline-2 focus-visible:outline-sidebar-primary'
@@ -86,8 +88,79 @@ const nav = [
   ] },
 ]
 
+function UserFooter() {
+  const router = useRouter()
+  const { user, loading, logout, isLoggedIn } = useAuth()
+
+  const onLogout = async () => {
+    await logout()
+    // 登出后显式跳登录页：仅清状态的话当前这屏不会自动跳走
+    router.replace('/login')
+  }
+
+  if (loading) {
+    return (
+      <div className="border-t border-sidebar-border px-3 py-3 text-[11px] text-sidebar-foreground/50">
+        检查登录状态…
+      </div>
+    )
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div className="border-t border-sidebar-border px-3 py-3">
+        <Link
+          href="/login"
+          className="flex h-8 items-center justify-center rounded-md bg-sidebar-primary text-xs font-medium text-sidebar-primary-foreground hover:opacity-90"
+        >
+          去登录
+        </Link>
+      </div>
+    )
+  }
+
+  const initial = (user?.name || '?').slice(0, 1).toUpperCase()
+
+  return (
+    <div className="border-t border-sidebar-border px-3 py-3">
+      <div className="flex items-center gap-2">
+        {user?.avatarUrl ? (
+          // 飞书头像是外部域名，用原生 img 避免 next/image 域名白名单配置
+          <img src={user.avatarUrl} alt="" className="size-7 shrink-0 rounded-full object-cover" />
+        ) : (
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-[11px] font-semibold">
+            {initial}
+          </div>
+        )}
+        <div className="min-w-0 flex-1 leading-tight">
+          <div className="truncate text-xs font-medium text-sidebar-accent-foreground">{user?.name}</div>
+          {user?.email && (
+            <div className="truncate text-[10px] text-sidebar-foreground/50" title={user.email}>
+              {user.email}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => void onLogout()}
+          title="退出登录"
+          className="shrink-0 rounded p-1 text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+        >
+          <LogOut className="size-3.5" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+
+  // 登录页与回跳页是全屏独立页面，不套侧边栏
+  if (pathname.startsWith('/login') || pathname.startsWith('/auth/')) {
+    return <>{children}</>
+  }
+
   let i = -1
   return (
     <div className="flex min-h-dvh">
@@ -164,6 +237,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           ))}
         </nav>
+        <UserFooter />
       </aside>
       <main className="min-w-0 flex-1">{children}</main>
     </div>
