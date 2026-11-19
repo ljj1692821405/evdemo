@@ -28,7 +28,10 @@ export type CaseItem = {
 
 export const DEMO_AGENT_ID = 'ag_skill'
 
-export type FieldContext = { kind: 'tools' } | { kind: 'enum'; values: { value: string; meaning: string }[] }
+export type FieldContext =
+  | { kind: 'tools'; selectedTools?: string[] }
+  | { kind: 'enum'; values: { value: string; meaning: string }[] }
+  | { kind: 'note'; text: string }
 
 export type FieldEntry = {
   logicalName: string

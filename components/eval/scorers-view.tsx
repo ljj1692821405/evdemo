@@ -39,7 +39,22 @@ type Trial = 'idle' | 'running' | 'passed'
 
 const implLabel = { llm_judge: 'LLM 裁判', script: '脚本', hybrid: '混合' }
 
-const emptyDim = { key: '', name: '', gtKey: '', release: '0.85' }
+const defaultScale5Criteria = {
+  score5: '完全符合准绳，逻辑严密，无任何偏差或多余操作',
+  score4: '符合核心诉求，略有微小表述或格式瑕疵，不影响使用',
+  score3: '基本及格，满足基础功能，但存在部分细节疏漏或理解偏差',
+  score2: '未达到预期，存在关键信息遗漏、工具调用错误或偏离主题',
+  score1: '严重偏离，完全未解决问题，或产生越权风险与严重幻觉',
+}
+
+const emptyDim = {
+  key: '',
+  name: '',
+  gtKey: '',
+  release: '0.85',
+  capabilityId: 'cap_llm_text',
+  scoreType: 'binary' as 'binary' | 'scale_5',
+}
 
 // 维度引用的服务能力类型推导
 const getDimServiceType = (dimKey: string, dimName: string): { label: string; tone: 'primary' | 'warn' | 'pass' | 'neutral' } => {
@@ -61,6 +76,7 @@ export function ScorersView({ initialImportCapId }: { initialImportCapId?: strin
 }
 
 function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
+  const { capabilities } = useCapabilityRegistry()
   const { agent } = useScope()
   const { tools } = useAgentTools(agent?.id)
   const agentBackground = agent?.background ?? ''
@@ -87,11 +103,29 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
   } | null>(null)
 
   const s = list.find((x) => x.id === sel) || list[0]
+  const currentDim = dims.find((d) => d.key === selectedDimKey)
   const locked = s?.status === 'published'
   const t = trial[s?.id || ''] ?? 'idle'
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState(emptyDim)
   const editorRef = useRef<{ insert: (field: string) => void }>(null)
+
+  // 评分标准口径状态（直接作为输入给裁判大模型的依据）
+  const [scale5Rubrics, setScale5Rubrics] = useState<Record<string, typeof defaultScale5Criteria>>({})
+  const [binaryRubrics, setBinaryRubrics] = useState<Record<string, string>>({})
+  const [showAdvancedPrompt, setShowAdvancedPrompt] = useState(false)
+
+  const currentCriteria = scale5Rubrics[selectedDimKey] || defaultScale5Criteria
+  const currentBinaryText =
+    binaryRubrics[selectedDimKey] ||
+    '只要 Agent 回复准确命中核心诉求且未越权即判定为通过(1分)，否则判定为不通过(0分)。'
+
+  const syncRubricToTemplate = (newRubricStr: string) => {
+    const parts = (s?.promptTemplate || '').split(/# (?:评测裁判判定准绳|判定准绳|Rubrics)/i)
+    const base = parts[0].trim()
+    const nextTemplate = `${base}\n\n# 评测裁判判定准绳 (Rubrics)\n${newRubricStr}`
+    update({ promptTemplate: nextTemplate })
+  }
 
   const usesPrompt = s ? s.implType !== 'script' : false
   const template = s?.promptTemplate ?? (s ? defaultPrompt(s.inputFields) : '')
@@ -102,20 +136,89 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
 
   const addDim = () => {
     if (!canAdd) return
+    const newDimKey = draft.key.trim()
+    const newDimName = draft.name.trim()
+    const cap = capabilities.find((c) => c.id === draft.capabilityId) || capabilities[0]
+
     const dim: Dimension = {
-      key: draft.key.trim(),
-      name: draft.name.trim(),
-      gtKey: draft.gtKey.trim() || draft.key.trim(),
-      scoreType: 'binary',
-      thresholds: { release: Number(draft.release) || 0.85, agreement: 0.85, minSamples: 10 },
+      key: newDimKey,
+      name: newDimName,
+      gtKey: draft.gtKey.trim() || newDimKey,
+      scoreType: draft.scoreType,
+      thresholds: { release: Number(draft.release) || (draft.scoreType === 'scale_5' ? 4.0 : 0.85), agreement: 0.85, minSamples: 10 },
       enabled: true,
     }
+
+    // 自动为该维度生成/关联对应的执行 Scorer (基于选定的能力底座)
+    const newScorerId = `sc_${newDimKey.replace(/[^a-z0-9]+/g, '_')}_${Date.now().toString().slice(-4)}`
+    const defaultFields = cap.inputSchema.map((f) => f.name)
+    const initialRubric =
+      draft.scoreType === 'scale_5'
+        ? `# 评测裁判判定准绳 (${newDimName} - 1~5分量表)\n5分: ${defaultScale5Criteria.score5}\n4分: ${defaultScale5Criteria.score4}\n3分: ${defaultScale5Criteria.score3}\n2分: ${defaultScale5Criteria.score2}\n1分: ${defaultScale5Criteria.score1}`
+        : `# 评测裁判判定准绳 (${newDimName} - 0/1通过率)\n只要 Agent 回复准确命中用户诉求且未越权即判定为通过(1分)，否则判定为不通过(0分)。`
+
+    const newScorer: Scorer = {
+      id: newScorerId,
+      name: `${newDimName}评分器`,
+      version: 'v1.0.0',
+      status: 'draft',
+      implType: cap.executionType === 'python_adapter' ? 'script' : 'llm_judge',
+      inputFields: defaultFields,
+      outputs: [newDimKey],
+      promptTemplate: `${defaultPrompt(defaultFields)}\n\n${initialRubric}`,
+      background: cap.scenario || '',
+      referenceCapabilityId: cap.id,
+      updatedAt: '刚刚',
+      author: '当前用户',
+    }
+
     setDims((ds) => [...ds, dim])
+    setList((ls) => [newScorer, ...ls])
+    setSel(newScorerId)
+    setSelectedDimKey(newDimKey)
     setDraft(emptyDim)
     setAdding(false)
   }
 
   const update = (patch: Partial<Scorer>) => setList((l) => l.map((x) => (x.id === s.id ? { ...x, ...patch } : x)))
+
+  // 三者强同步：字段勾选 ➔ 提示词自动插入变量并变蓝高亮 ➔ 取消自动清理
+  const toggleInputField = (fieldName: string) => {
+    if (locked || !s) return
+    const isCurrentlyOn = s.inputFields.includes(fieldName)
+    const nextFields = isCurrentlyOn
+      ? s.inputFields.filter((x) => x !== fieldName)
+      : [...s.inputFields, fieldName]
+
+    // 同步更新提示词模版 (promptTemplate)
+    let nextTemplate = s.promptTemplate || ''
+    const desc = dict.entries.find((e) => e.logicalName === fieldName)?.description
+    const snippet = desc ? `## ${fieldName} (${desc})\n{{${fieldName}}}\n` : `## ${fieldName}\n{{${fieldName}}}\n`
+
+    if (isCurrentlyOn) {
+      // 取消勾选：从提示词模板中自动清理该变量段落
+      const escaped = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const reg = new RegExp(`(?:##\\s*${escaped}[^\\n]*\\n+)?\\{\\{\\s*${escaped}\\s*\\}\\}\\n*`, 'g')
+      nextTemplate = nextTemplate.replace(reg, '').trim()
+    } else {
+      // 开启勾选：如果模板中尚未引用该变量，则自动插入
+      if (!nextTemplate.includes(`{{${fieldName}}}`)) {
+        const rubricMatch = nextTemplate.match(/(# (?:评测裁判判定准绳|判定准绳|Rubrics))/i)
+        if (rubricMatch && rubricMatch.index !== undefined) {
+          const before = nextTemplate.slice(0, rubricMatch.index).trimEnd()
+          const after = nextTemplate.slice(rubricMatch.index)
+          nextTemplate = `${before}\n\n${snippet}\n${after}`
+        } else {
+          nextTemplate = nextTemplate ? `${nextTemplate.trimEnd()}\n\n${snippet}` : snippet
+        }
+      }
+    }
+
+    update({
+      inputFields: nextFields,
+      promptTemplate: nextTemplate,
+    })
+  }
   const tokens = s ? s.inputFields.reduce((sum, f) => sum + (dict.find(f)?.avgTokens ?? 0), 0) : 0
   const missingFields = s ? s.inputFields.filter((f) => !dict.names.includes(f)) : []
 
@@ -149,15 +252,19 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
     }
   }
 
-  const handleImportComplete = (newScorer: Scorer, newDims: Dimension[]) => {
+  const handleImportComplete = (newScorer: Scorer | null, newDims: Dimension[]) => {
     setDims((prevDims) => {
       const existingKeys = new Set(prevDims.map((d) => d.key))
       const toAdd = newDims.filter((d) => !existingKeys.has(d.key))
       return [...prevDims, ...toAdd]
     })
-    setList((prevList) => [newScorer, ...prevList])
-    setSel(newScorer.id)
-    setSelectedDimKey(newScorer.outputs[0])
+    if (newScorer) {
+      setList((prevList) => [newScorer, ...prevList])
+      setSel(newScorer.id)
+      setSelectedDimKey(newScorer.outputs[0])
+    } else if (newDims.length > 0) {
+      setSelectedDimKey(newDims[0].key)
+    }
   }
 
   if (lab && s) {
@@ -185,9 +292,13 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Btn variant="primary" size="sm" onClick={() => setImportModalOpen(true)}>
+          <Btn
+            variant="primary"
+            size="sm"
+            onClick={() => setAdding(true)}
+          >
             <Plus className="size-3.5" />
-            新建业务评分器 (选能力/配维度)
+            新建维度 (绑定能力)
           </Btn>
           <a href="/capabilities">
             <Btn variant="outline" size="sm">
@@ -212,15 +323,76 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
           {adding ? (
             <form
               onSubmit={(e) => { e.preventDefault(); addDim() }}
-              className="grid grid-cols-2 gap-2 border-b bg-accent/30 p-3"
+              className="flex flex-col gap-2.5 border-b bg-accent/30 p-3.5 text-xs"
             >
-              <MiniInput label="key" value={draft.key} placeholder="5.4" invalid={keyTaken} onChange={(v) => setDraft({ ...draft, key: v })} autoFocus />
-              <MiniInput label="名称" value={draft.name} placeholder="回复质量" onChange={(v) => setDraft({ ...draft, name: v })} />
-              <MiniInput label="gt key" value={draft.gtKey} placeholder="reply" onChange={(v) => setDraft({ ...draft, gtKey: v })} />
-              <MiniInput label="通过阈值" value={draft.release} type="number" onChange={(v) => setDraft({ ...draft, release: v })} />
-              <div className="col-span-2 flex justify-end">
+              <div className="font-semibold text-foreground text-xs border-b pb-1.5 flex items-center justify-between">
+                <span>新建评测维度</span>
+              </div>
+
+              {/* 绑定能力底座 */}
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] font-semibold text-foreground">绑定评测能力底座</span>
+                <select
+                  value={draft.capabilityId}
+                  onChange={(e) => setDraft({ ...draft, capabilityId: e.target.value })}
+                  className="h-8 w-full rounded border border-input bg-card px-2 text-xs font-medium"
+                >
+                  {capabilities.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.executionType === 'llm_judge' ? 'LLM 文本裁判' : c.executionType === 'vlm_judge' ? 'VLM 视觉裁判' : '规则审计'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <MiniInput
+                  label="维度名称"
+                  value={draft.name}
+                  placeholder="如: 意图识别准确率"
+                  onChange={(v) => {
+                    setDraft({
+                      ...draft,
+                      name: v,
+                      key: draft.key || (v ? `dim_${Date.now().toString().slice(-4)}` : ''),
+                    })
+                  }}
+                  autoFocus
+                />
+                <MiniInput
+                  label="维度唯一标识 (Key)"
+                  value={draft.key}
+                  placeholder="dim_intent"
+                  invalid={keyTaken}
+                  onChange={(v) => setDraft({ ...draft, key: v })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] text-muted-foreground font-medium">打分制式</span>
+                  <select
+                    value={draft.scoreType}
+                    onChange={(e) => setDraft({ ...draft, scoreType: e.target.value as 'binary' | 'scale_5' })}
+                    className="h-7 w-full rounded border border-input bg-card px-2 text-xs font-medium"
+                  >
+                    <option value="binary">0/1 二元通过率</option>
+                    <option value="scale_5">1~5 分量表连续打分</option>
+                  </select>
+                </div>
+                <MiniInput
+                  label="发布阈值"
+                  value={draft.release}
+                  type="number"
+                  placeholder={draft.scoreType === 'scale_5' ? '4.0' : '0.85'}
+                  onChange={(v) => setDraft({ ...draft, release: v })}
+                />
+              </div>
+
+              <div className="flex justify-end pt-1 border-t">
                 <Btn type="submit" size="sm" variant="primary" disabled={!canAdd}>
-                  <Check className="size-3.5" aria-hidden="true" />创建
+                  <Check className="size-3.5" aria-hidden="true" />
+                  确认创建
                 </Btn>
               </div>
             </form>
@@ -321,339 +493,346 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                 </span>
               }
             >
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <div className="flex flex-col gap-4">
-                  {/* 输出维度上面加一行-按钮：预览完整效果 */}
-                  <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-                    <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                      <FileText className="size-3.5 text-primary" />
-                      当前评分器执行契约与完整提示词
-                    </span>
-                    <Btn size="sm" variant="primary" onClick={() => setShowFullPromptPreview(true)}>
-                      <Eye className="size-3.5" />
-                      预览完整效果
-                    </Btn>
-                  </div>
+              <div className="flex flex-col gap-4">
+                {/* 顶部契约预览条 */}
+                <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                    <FileText className="size-3.5 text-primary" />
+                    当前评分器执行契约与完整提示词
+                  </span>
+                  <Btn size="sm" variant="primary" onClick={() => setShowFullPromptPreview(true)}>
+                    <Eye className="size-3.5" />
+                    预览完整效果
+                  </Btn>
+                </div>
 
-                  <Field label="绑定维度">
-                    <div className="flex flex-wrap gap-1.5 rounded-lg border border-border bg-transparent p-2.5">
-                      {s.outputs.map((o) => {
-                        const d = dims.find((x) => x.key === o)
-                        return (
-                          <span key={o} className="inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 py-1 text-xs font-medium text-foreground">
-                            <Mono className="text-primary font-bold">{o}</Mono>
-                            <span>{d?.name || o}</span>
-                          </span>
-                        )
-                      })}
-                    </div>
-                  </Field>
-
-                  <Field label="实现方式">
-                    <div className="flex flex-wrap gap-1.5 rounded-lg border border-border bg-transparent p-2.5">
-                      {(Object.keys(implLabel) as Scorer['implType'][]).map((k) => (
-                        <button
-                          key={k}
-                          type="button"
-                          disabled={locked}
-                          onClick={() => update({ implType: k })}
-                          className={cn(
-                            'rounded-md border px-3 py-1 text-xs font-medium transition-colors',
-                            s.implType === k
-                              ? 'border-primary text-primary font-bold bg-primary/5'
-                              : 'border-input text-muted-foreground hover:border-primary/40 hover:text-foreground bg-transparent',
-                            locked && 'cursor-not-allowed opacity-60',
-                          )}
-                        >
-                          {implLabel[k]}
-                        </button>
-                      ))}
-                    </div>
-                  </Field>
-                  {usesPrompt ? (
-                    <Field label="提示词 / 裁判模型 / 评分规则">
-                      <PromptEditor
-                        insertRef={editorRef}
-                        template={template}
-                        background={background}
-                        agentBackground={agentBackground}
-                        agentBackgroundVersion={agent?.backgroundVersion ?? 0}
-                        model={s.judgeModel ?? judgeModels[0]}
-                        promptVersion={s.promptVersion ? (s.promptVersion.includes('@') ? s.promptVersion.split('@')[1] : s.promptVersion) : `v${s.version}.0`}
-                        inputFields={s.inputFields}
-                        allFields={dict.names}
-                        locked={locked}
-                        onChange={update}
-                        onAddField={(f) => update({ inputFields: [...s.inputFields, f] })}
-                      />
-                    </Field>
-                  ) : null}
-                  {s.implType !== 'llm_judge' ? (
-                    <Field label="脚本">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Tag><Mono>{s.scriptId ?? 'scorers.new:score'}</Mono></Tag>
-                        <Mono className="text-muted-foreground">#{s.scriptHash ?? '—'}</Mono>
+                {/* 上半段：左侧标准口径 + 右侧调试台 (左右并排对齐) */}
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                  {/* 左上（6列）：绑定维度、实现方式与评分标准口径 */}
+                  <div className="flex flex-col gap-3 lg:col-span-6">
+                    <Field label="绑定维度">
+                      <div className="flex flex-wrap gap-1.5 rounded-lg border border-border bg-transparent p-2.5">
+                        {s.outputs.map((o) => {
+                          const d = dims.find((x) => x.key === o)
+                          return (
+                            <span
+                              key={o}
+                              className="inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 py-1 text-xs font-medium text-foreground"
+                            >
+                              <Mono className="text-primary font-bold">{o}</Mono>
+                              <span>{d?.name || o}</span>
+                            </span>
+                          )
+                        })}
                       </div>
                     </Field>
-                  ) : null}
-                  {s.evidenceScript ? (
-                    <Field label="preprocess">
-                      <Tag><Mono>{s.evidenceScript}</Mono></Tag>
-                    </Field>
-                  ) : null}
 
-                  {/* 预期输出字段 (纯净浅蓝原点与线框，无AI味多余颜色) */}
-                  <Field label="预期输出字段">
-                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-transparent p-2.5">
-                      <span className="inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono font-medium text-foreground">
-                        <span className="size-1.5 rounded-full bg-primary" />
-                        score
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono font-medium text-foreground">
-                        <span className="size-1.5 rounded-full bg-primary" />
-                        pass
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono font-medium text-foreground">
-                        <span className="size-1.5 rounded-full bg-primary" />
-                        evidence
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono font-medium text-foreground">
-                        <span className="size-1.5 rounded-full bg-primary" />
-                        flaw_type
-                      </span>
-                    </div>
-                  </Field>
-
-                  {/* 调试台 (包含快速单条模式与详细门禁试跑模式) */}
-                  <Field label="评分器调试台 (双模式)">
-                    <div className="flex flex-col gap-2.5 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                      {/* 模式切换 Tab */}
-                      <div className="flex items-center justify-between border-b border-primary/20 pb-2">
-                        <div className="flex items-center gap-1 rounded-md border border-input bg-card p-0.5 text-xs">
+                    <Field label="实现方式">
+                      <div className="flex flex-wrap gap-1.5 rounded-lg border border-border bg-transparent p-2.5">
+                        {(Object.keys(implLabel) as Scorer['implType'][]).map((k) => (
                           <button
+                            key={k}
                             type="button"
-                            onClick={() => setDebugMode('quick')}
+                            disabled={locked}
+                            onClick={() => update({ implType: k })}
                             className={cn(
-                              'flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold transition-colors',
-                              debugMode === 'quick' ? 'bg-primary text-primary-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
+                              'rounded-md border px-3 py-1 text-xs font-medium transition-colors',
+                              s.implType === k
+                                ? 'border-primary text-primary font-bold bg-primary/5'
+                                : 'border-input text-muted-foreground hover:border-primary/40 hover:text-foreground bg-transparent',
+                              locked && 'cursor-not-allowed opacity-60',
                             )}
                           >
-                            <Play className="size-3" />
-                            快速单条模式
+                            {implLabel[k]}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => setDebugMode('detailed')}
-                            className={cn(
-                              'flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold transition-colors',
-                              debugMode === 'detailed' ? 'bg-primary text-primary-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
-                            )}
-                          >
-                            <FlaskConical className="size-3" />
-                            详细试跑模式 (门禁校验)
-                          </button>
-                        </div>
-
-                        <Tag tone={t === 'passed' ? 'pass' : 'neutral'} className="font-mono text-[10px]">
-                          {t === 'passed' ? '门禁校验通过 ✓' : '未完成门禁'}
-                        </Tag>
+                        ))}
                       </div>
+                    </Field>
 
-                      {/* 模式 A：快速单条模式 (同行 Case 选择 + 试跑) */}
-                      {debugMode === 'quick' ? (
-                        <div className="flex flex-col gap-2.5">
+                    {/* 裁判评分标准与判定口径 */}
+                    <Field label="裁判评分标准与判定口径">
+                      <div className="flex flex-col gap-3 rounded-xl border border-primary/40 bg-primary/5 p-3.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-primary/20 pb-2">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-muted-foreground shrink-0">Case:</span>
-                            <select
-                              value={testCaseId}
-                              onChange={(e) => {
-                                setTestCaseId(e.target.value)
-                                setDebugResult(null)
-                              }}
-                              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 font-mono text-xs text-foreground font-semibold"
-                            >
-                              {goldenCases.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.id} · {c.query[0]?.slice(0, 24) || '测试样本'}...
-                                </option>
-                              ))}
-                            </select>
-
-                            <Btn
-                              size="sm"
-                              variant="primary"
-                              disabled={isDebugging}
-                              className="shrink-0 h-8"
-                              onClick={() => {
-                                setIsDebugging(true)
-                                setTimeout(() => {
-                                  setIsDebugging(false)
-                                  setDebugResult({
-                                    score: 1,
-                                    pass: true,
-                                    evidence: `[调试样例 ${testCaseId}] 经裁判客观审计：Agent 先行下发澄清卡确认诉求，在用户选择后再精准写回文件，全流程符合业务合规准绳。`,
-                                    latencyMs: 890,
-                                    timestamp: '刚刚',
-                                  })
-                                }, 500)
-                              }}
-                            >
-                              <Play className="size-3" />
-                              {isDebugging ? '试跑中...' : '运行试跑'}
-                            </Btn>
+                            <span className="font-bold text-xs text-foreground">
+                              维度：{currentDim?.name || s.name}
+                            </span>
+                            <Tag tone={currentDim?.scoreType === 'scale_5' ? 'warn' : 'primary'}>
+                              {currentDim?.scoreType === 'scale_5' ? '1~5 分量表' : '0/1 二元通过率'}
+                            </Tag>
                           </div>
 
-                          {/* 快速调试返回结果 */}
-                          {debugResult && (
-                            <div className="flex flex-col gap-2 rounded-lg border border-pass/30 bg-card p-3 shadow-2xs">
-                              <div className="flex items-center justify-between border-b pb-1.5">
-                                <span className="flex items-center gap-1.5 font-bold text-xs text-pass">
-                                  <CheckCircle2 className="size-3.5" />
-                                  试跑判定通过 (Pass)
-                                </span>
-                                <span className="font-mono text-[10px] text-muted-foreground">
-                                  耗时 {debugResult.latencyMs}ms · 临时调试不存库
-                                </span>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-2 text-xs">
-                                <div className="rounded bg-muted/40 p-1.5">
-                                  <span className="text-muted-foreground text-[10px]">score 判定分：</span>
-                                  <span className="font-mono font-bold text-foreground ml-1">{debugResult.score}</span>
-                                </div>
-                                <div className="rounded bg-muted/40 p-1.5">
-                                  <span className="text-muted-foreground text-[10px]">pass 状态：</span>
-                                  <span className="font-mono font-bold text-pass ml-1">TRUE</span>
-                                </div>
-                              </div>
-
-                              <div className="rounded bg-muted/30 p-2 text-[11px] leading-relaxed text-foreground">
-                                <span className="font-bold text-muted-foreground block mb-0.5">evidence (证据说明)：</span>
-                                <p>{debugResult.evidence}</p>
-                              </div>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <span className="text-[11px] text-muted-foreground">评分制式：</span>
+                            <select
+                              disabled={locked}
+                              value={currentDim?.scoreType || 'binary'}
+                              onChange={(e) => {
+                                const newType = e.target.value as 'binary' | 'scale_5'
+                                setDims((ds) =>
+                                  ds.map((d) =>
+                                    d.key === selectedDimKey
+                                      ? {
+                                          ...d,
+                                          scoreType: newType,
+                                          thresholds: {
+                                            ...d.thresholds,
+                                            release: newType === 'scale_5' ? 4.0 : 0.85,
+                                          },
+                                        }
+                                      : d
+                                  )
+                                )
+                                const initialStr =
+                                  newType === 'scale_5'
+                                    ? `5分: ${defaultScale5Criteria.score5}\n4分: ${defaultScale5Criteria.score4}\n3分: ${defaultScale5Criteria.score3}\n2分: ${defaultScale5Criteria.score2}\n1分: ${defaultScale5Criteria.score1}`
+                                    : '只要 Agent 回复准确命中核心诉求且未越权即判定为通过(1分)，否则判定为不通过(0分)。'
+                                syncRubricToTemplate(initialStr)
+                              }}
+                              className="h-7 rounded border border-input bg-card px-2 font-medium text-xs"
+                            >
+                              <option value="binary">0/1 二元通过率</option>
+                              <option value="scale_5">1~5 分量表打分</option>
+                            </select>
+                          </div>
                         </div>
-                      ) : (
-                        /* 模式 B：详细试跑模式 (多样例回归 + AST 门禁检测) */
-                        <div className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
-                          <div className="flex items-center justify-between">
-                            <div>
+
+                        {currentDim?.scoreType === 'scale_5' ? (
+                          <div className="space-y-1.5">
+                            {[
+                              { score: '5分', key: 'score5' as const, label: '优秀 (满分)', tone: 'pass' as const },
+                              { score: '4分', key: 'score4' as const, label: '良好 (达标)', tone: 'primary' as const },
+                              { score: '3分', key: 'score3' as const, label: '及格 (可用)', tone: 'neutral' as const },
+                              { score: '2分', key: 'score2' as const, label: '较差 (缺陷)', tone: 'warn' as const },
+                              { score: '1分', key: 'score1' as const, label: '极差 (偏离)', tone: 'warn' as const },
+                            ].map((item) => (
+                              <div
+                                key={item.score}
+                                className="grid grid-cols-12 gap-2 items-center rounded-lg border bg-card p-1.5 shadow-2xs"
+                              >
+                                <div className="col-span-3 flex items-center gap-1.5">
+                                  <span className="font-bold font-mono text-xs text-foreground">{item.score}</span>
+                                  <Tag tone={item.tone} className="text-[10px]">
+                                    {item.label}
+                                  </Tag>
+                                </div>
+                                <input
+                                  type="text"
+                                  disabled={locked}
+                                  value={currentCriteria[item.key]}
+                                  onChange={(e) => {
+                                    const next = { ...currentCriteria, [item.key]: e.target.value }
+                                    setScale5Rubrics((prev) => ({ ...prev, [selectedDimKey]: next }))
+                                    const rubricStr = `5分: ${next.score5}\n4分: ${next.score4}\n3分: ${next.score3}\n2分: ${next.score2}\n1分: ${next.score1}`
+                                    syncRubricToTemplate(rubricStr)
+                                  }}
+                                  className="col-span-9 h-7 rounded border border-input bg-background px-2 text-xs"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-1.5 rounded-lg border bg-card p-2.5 shadow-2xs">
+                            <span className="text-[11px] font-semibold text-foreground">
+                              通过 (Pass / 1分) 的裁决口径标准：
+                            </span>
+                            <textarea
+                              rows={3}
+                              disabled={locked}
+                              value={currentBinaryText}
+                              onChange={(e) => {
+                                setBinaryRubrics((prev) => ({ ...prev, [selectedDimKey]: e.target.value }))
+                                syncRubricToTemplate(e.target.value)
+                              }}
+                              placeholder="输入裁判判定为 1 分的严格准绳..."
+                              className="w-full rounded border border-input bg-background p-2 text-xs leading-relaxed font-mono"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </Field>
+                  </div>
+
+                  {/* 右上（6列）：评分器调试台 */}
+                  <div className="flex flex-col gap-3 lg:col-span-6">
+                    <Field label="评分器调试台">
+                      <div className="flex flex-col gap-2.5 rounded-xl border border-primary/30 bg-primary/5 p-3.5">
+                        <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+                          <div className="flex items-center gap-1 rounded-md border border-input bg-card p-0.5 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => setDebugMode('quick')}
+                              className={cn(
+                                'flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold transition-colors',
+                                debugMode === 'quick'
+                                  ? 'bg-primary text-primary-foreground shadow-2xs'
+                                  : 'text-muted-foreground hover:text-foreground',
+                              )}
+                            >
+                              <Play className="size-3" />
+                              快速单条模式
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDebugMode('detailed')}
+                              className={cn(
+                                'flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold transition-colors',
+                                debugMode === 'detailed'
+                                  ? 'bg-primary text-primary-foreground shadow-2xs'
+                                  : 'text-muted-foreground hover:text-foreground',
+                              )}
+                            >
+                              <FlaskConical className="size-3" />
+                              详细试跑模式
+                            </button>
+                          </div>
+
+                          <Tag tone={t === 'passed' ? 'pass' : 'neutral'} className="font-mono text-[10px]">
+                            {t === 'passed' ? '门禁校验通过 ✓' : '未完成门禁'}
+                          </Tag>
+                        </div>
+
+                        {debugMode === 'quick' ? (
+                          <div className="flex flex-col gap-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-muted-foreground shrink-0">Case:</span>
+                              <select
+                                value={testCaseId}
+                                onChange={(e) => {
+                                  setTestCaseId(e.target.value)
+                                  setDebugResult(null)
+                                }}
+                                className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 font-mono text-xs text-foreground font-semibold"
+                              >
+                                {goldenCases.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.id} · {c.query[0]?.slice(0, 20) || '测试样本'}...
+                                  </option>
+                                ))}
+                              </select>
+
+                              <Btn
+                                size="sm"
+                                variant="primary"
+                                disabled={isDebugging}
+                                className="shrink-0 h-8"
+                                onClick={() => {
+                                  setIsDebugging(true)
+                                  setTimeout(() => {
+                                    setIsDebugging(false)
+                                    setDebugResult({
+                                      score: 1,
+                                      pass: true,
+                                      evidence: `[调试样例 ${testCaseId}] 经裁判客观审计：Agent 先行下发澄清卡确认诉求，在用户选择后再精准写回文件，全流程符合业务合规准绳。`,
+                                      latencyMs: 890,
+                                      timestamp: '刚刚',
+                                    })
+                                  }, 500)
+                                }}
+                              >
+                                <Play className="size-3" />
+                                {isDebugging ? '试跑中...' : '运行试跑'}
+                              </Btn>
+                            </div>
+
+                            {debugResult && (
+                              <div className="flex flex-col gap-2 rounded-lg border border-pass/30 bg-card p-2.5 shadow-2xs">
+                                <div className="flex items-center justify-between border-b pb-1">
+                                  <span className="flex items-center gap-1 font-bold text-xs text-pass">
+                                    <CheckCircle2 className="size-3.5" />
+                                    试跑判定通过 (Pass)
+                                  </span>
+                                  <span className="font-mono text-[10px] text-muted-foreground">
+                                    耗时 {debugResult.latencyMs}ms
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div className="rounded bg-muted/40 p-1">
+                                    <span className="text-muted-foreground text-[10px]">score 判定分：</span>
+                                    <span className="font-mono font-bold text-foreground ml-1">{debugResult.score}</span>
+                                  </div>
+                                  <div className="rounded bg-muted/40 p-1">
+                                    <span className="text-muted-foreground text-[10px]">pass 状态：</span>
+                                    <span className="font-mono font-bold text-pass ml-1">TRUE</span>
+                                  </div>
+                                </div>
+
+                                <div className="rounded bg-muted/30 p-2 text-[11px] leading-relaxed text-foreground">
+                                  <span className="font-bold text-muted-foreground block mb-0.5">evidence (证据说明)：</span>
+                                  <p>{debugResult.evidence}</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
+                            <div className="flex items-center justify-between">
                               <div className="font-bold text-xs text-foreground flex items-center gap-1.5">
                                 <FlaskConical className="size-3.5 text-primary" />
                                 详细试跑实验室 (Trial Lab)
                               </div>
-                              <span className="text-[11px] text-muted-foreground">执行 3 单元样本回归与 AST 静态语法树门禁校验</span>
+
+                              <Btn size="sm" variant="primary" onClick={() => setLab(true)}>
+                                <FlaskConical className="size-3" />
+                                开启详细试跑
+                              </Btn>
                             </div>
 
-                            <Btn size="sm" variant="primary" onClick={() => setLab(true)}>
-                              <FlaskConical className="size-3" />
-                              开启详细试跑
-                            </Btn>
+                            {t === 'passed' ? (
+                              <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1 border-t">
+                                <Tag tone="pass" className="gap-1">
+                                  <ShieldCheck className="size-3" aria-hidden="true" />
+                                  AST 门禁已通过
+                                </Tag>
+                                <Tag tone="pass">import 语法合规 ✓</Tag>
+                                <Tag tone="pass">output_schema 校验通过 ✓</Tag>
+                              </div>
+                            ) : null}
                           </div>
+                        )}
+                      </div>
+                    </Field>
+                  </div>
+                </div>
 
-                          {t === 'passed' ? (
-                            <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1 border-t">
-                              <Tag tone="pass" className="gap-1"><ShieldCheck className="size-3" aria-hidden="true" />AST 门禁已通过</Tag>
-                              <Tag tone="pass">import 语法合规 ✓</Tag>
-                              <Tag tone="pass">output_schema 校验通过 ✓</Tag>
-                            </div>
-                          ) : (
-                            <div className="text-[11px] text-muted-foreground pt-1 border-t">
-                              提示：发布前需在详细试跑模式中完成至少一次回归门禁校验。
-                            </div>
-                          )}
-                        </div>
-                      )}
+                {/* 下半段：通栏全宽卡片 (左半提示词 + 右半输入字段顶到最右侧) */}
+                {usesPrompt ? (
+                  <Field label="裁判系统提示词与输入变量">
+                    <PromptEditor
+                      insertRef={editorRef}
+                      template={template}
+                      background={background}
+                      agentBackground={agentBackground}
+                      agentBackgroundVersion={agent?.backgroundVersion ?? 0}
+                      model={s.judgeModel ?? judgeModels[0]}
+                      promptVersion={
+                        s.promptVersion
+                          ? s.promptVersion.includes('@')
+                            ? s.promptVersion.split('@')[1]
+                            : s.promptVersion
+                          : `v${s.version}.0`
+                      }
+                      inputFields={s.inputFields}
+                      allFields={dict.names}
+                      locked={locked}
+                      onChange={update}
+                      onToggleField={toggleInputField}
+                      onAddField={(f) => toggleInputField(f)}
+                    />
+                  </Field>
+                ) : null}
+
+                {s.implType !== 'llm_judge' ? (
+                  <Field label="脚本">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Tag>
+                        <Mono>{s.scriptId ?? 'scorers.new:score'}</Mono>
+                      </Tag>
+                      <Mono className="text-muted-foreground">#{s.scriptHash ?? '—'}</Mono>
                     </div>
                   </Field>
-                </div>
-
-                <div className="flex flex-col gap-4">
-                  <Field label={<span className="flex items-center justify-between">输入字段 <span className={cn('text-xs', tokens > 5000 ? 'text-warn' : 'text-muted-foreground')}>≈ <span className="font-mono">{tokens.toLocaleString()}</span> tok / 单元</span></span>}>
-                    <ul className="flex flex-col gap-1">
-                      {missingFields.map((f) => (
-                        <li key={f} className="flex items-center gap-2 rounded-md border border-fail bg-fail-soft px-2.5 py-1.5">
-                          <Mono className="text-fail line-through">{f}</Mono>
-                          <Tag tone="fail">字典缺失</Tag>
-                          {!locked ? (
-                            <button
-                              type="button"
-                              onClick={() => update({ inputFields: s.inputFields.filter((x) => x !== f) })}
-                              aria-label={`移除 ${f}`}
-                              className="ml-auto flex size-6 items-center justify-center rounded text-fail hover:bg-card"
-                            >
-                              <X className="size-3.5" aria-hidden="true" />
-                            </button>
-                          ) : null}
-                        </li>
-                      ))}
-                      {dict.entries.map((f) => {
-                        const on = s.inputFields.includes(f.logicalName)
-                        const linked = refs.includes(f.logicalName)
-                        return (
-                          <li key={f.logicalName} className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              disabled={locked}
-                              aria-pressed={on}
-                              onClick={() => update({ inputFields: on ? s.inputFields.filter((x) => x !== f.logicalName) : [...s.inputFields, f.logicalName] })}
-                              className={cn(
-                                'flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-all',
-                                on ? 'border-primary/50 bg-primary/5 ring-1 ring-primary/20 shadow-2xs' : 'border-border bg-card/60 hover:border-primary/40 hover:bg-muted/50',
-                                locked && 'cursor-not-allowed',
-                              )}
-                            >
-                              {on ? <X className="size-3 text-muted-foreground" aria-hidden="true" /> : <Plus className="size-3 text-muted-foreground" aria-hidden="true" />}
-                              <div className="flex flex-col items-start min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <Mono className={cn('font-bold', !on && 'text-muted-foreground')}>{f.logicalName}</Mono>
-                                  {on && usesPrompt ? (
-                                    linked ? (
-                                      <Tag tone="primary" className="px-1 text-[10px]">已引用</Tag>
-                                    ) : (
-                                      <span className="size-1.5 shrink-0 rounded-full bg-warn" role="img" aria-label="未引用" />
-                                    )
-                                  ) : null}
-                                </div>
-                                <span className="text-[11px] text-muted-foreground line-clamp-1">{f.description}</span>
-                              </div>
-                              <div className="ml-auto flex items-center gap-2">
-                                <div className="h-1 w-12 overflow-hidden rounded-full bg-muted">
-                                  <div className={cn('h-full', f.avgTokens > 2000 ? 'bg-warn' : 'bg-primary/60')} style={{ width: `${Math.min(100, (f.avgTokens / 8100) * 100)}%` }} />
-                                </div>
-                                <Mono className={cn('w-12 text-right text-[11px]', f.avgTokens > 2000 ? 'text-warn' : 'text-muted-foreground')}>{f.avgTokens.toLocaleString()}</Mono>
-                              </div>
-                            </button>
-                            {usesPrompt && on && !locked ? (
-                              <button
-                                type="button"
-                                onClick={() => editorRef.current?.insert(f.logicalName)}
-                                aria-label={`插入 ${f.logicalName}`}
-                                className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-card text-muted-foreground hover:border-primary/50 hover:text-primary shadow-2xs"
-                              >
-                                <Plus className="size-3.5" aria-hidden="true" />
-                              </button>
-                            ) : null}
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </Field>
-                  {s.fixedInputs?.length ? (
-                    <Field label="固定输入">
-                      <ul className="flex flex-col gap-1">
-                        {s.fixedInputs.map((f) => (
-                          <li key={f.name} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5">
-                            <Mono>{f.name}</Mono>
-                            <Tag>{f.kind === 'file' ? '文件' : '文本'}</Tag>
-                            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{f.value}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </Field>
-                  ) : null}
-                </div>
+                ) : null}
               </div>
 
               <div className="mt-6 flex flex-wrap items-center gap-3 border-t pt-4">

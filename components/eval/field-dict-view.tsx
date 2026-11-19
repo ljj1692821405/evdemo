@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { AlertOctagon, Check, CornerDownRight, Gavel, Code2, Pencil, Plus, Trash2, Wrench, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -13,12 +13,13 @@ import { usePreprocessScripts } from './preprocess-pipeline'
 
 const isEmpty = (v: unknown) => v === undefined || v === null || v === ''
 
-type ContextKind = 'none' | 'tools' | 'enum'
+type ContextKind = 'none' | 'enum' | 'tools' | 'note'
 
 const contextKinds: { id: ContextKind; label: string }[] = [
   { id: 'none', label: '无' },
-  { id: 'tools', label: '工具清单' },
-  { id: 'enum', label: '取值说明' },
+  { id: 'enum', label: '枚举字典' },
+  { id: 'tools', label: '关联工具' },
+  { id: 'note', label: '独立口径' },
 ]
 
 export function FieldDictVersionTag() {
@@ -38,9 +39,25 @@ export function FieldDictView() {
   const entry = dict.find(selected) ?? dict.entries[0]
   const entryKind: ContextKind = entry?.context?.kind ?? 'none'
 
+  // 每个字段的附带上下文完全独立设置与保存
   const setContextKind = (f: FieldEntry, kind: ContextKind) => {
-    const context: FieldContext | undefined =
-      kind === 'tools' ? { kind: 'tools' } : kind === 'enum' ? { kind: 'enum', values: f.context?.kind === 'enum' ? f.context.values : [] } : undefined
+    let context: FieldContext | undefined
+    if (kind === 'tools') {
+      context = {
+        kind: 'tools',
+        selectedTools: f.context?.kind === 'tools' && f.context.selectedTools ? f.context.selectedTools : tools.map((t) => t.name),
+      }
+    } else if (kind === 'enum') {
+      context = {
+        kind: 'enum',
+        values: f.context?.kind === 'enum' ? f.context.values : [],
+      }
+    } else if (kind === 'note') {
+      context = {
+        kind: 'note',
+        text: f.context?.kind === 'note' ? f.context.text : '',
+      }
+    }
     dict.update(f.logicalName, { context })
   }
 
@@ -119,16 +136,18 @@ export function FieldDictView() {
                   <Td>
                     <div className="flex items-center gap-2">
                       <Mono className="font-semibold">{f.logicalName}</Mono>
-                      {f.source === 'derived' ? <Tag tone="primary">派生</Tag> : null}
+                      {f.source === 'derived' ? <Tag tone="pass" className="text-[10px]">评测派生</Tag> : null}
                       {bad ? <AlertOctagon className="size-3.5 text-fail" aria-label="含非法路径" /> : null}
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">{f.description}</div>
                   </Td>
                   <Td>
                     {f.context?.kind === 'tools' ? (
-                      <Tag tone="primary"><Wrench className="size-3" aria-hidden="true" />工具清单 <span className="font-mono">{tools.length}</span></Tag>
+                      <Tag tone="primary" className="text-[10px]"><Wrench className="size-3" aria-hidden="true" />工具 {f.context.selectedTools?.length ?? tools.length} 个</Tag>
                     ) : f.context?.kind === 'enum' ? (
-                      <Tag tone="primary">取值说明 <span className="font-mono">{f.context.values.length}</span></Tag>
+                      <Tag tone="primary" className="text-[10px]">枚举字典 <span className="font-mono">{f.context.values.length}</span> 项</Tag>
+                    ) : f.context?.kind === 'note' ? (
+                      <Tag tone="primary" className="text-[10px]">独立口径</Tag>
                     ) : (
                       <Mono className="text-muted-foreground">—</Mono>
                     )}
@@ -182,11 +201,28 @@ export function FieldDictView() {
         >
           <div className="flex items-center gap-2 border-b px-4 py-3">
             <Mono className="text-sm font-semibold">{entry.logicalName}</Mono>
-            {entry.source === 'derived' ? <Tag tone="primary">派生</Tag> : null}
+            {entry.source === 'derived' ? <Tag tone="pass" className="text-[10px]">评测派生</Tag> : null}
             <Mono className="ml-auto whitespace-nowrap text-[11px] text-muted-foreground">~{entry.avgTokens.toLocaleString()} tok</Mono>
           </div>
 
           <div className="flex flex-col gap-4 p-4">
+            {/* 仅对评测派生字段展示专属的精炼说明 */}
+            {entry.source === 'derived' && (
+              <div className="flex flex-col gap-1.5 rounded-lg border border-pass/30 bg-pass-soft/10 p-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-pass text-[11px]">评测派生字段 (特征提纯)</span>
+                  <Tag tone="pass" className="text-[9px]">专供裁判</Tag>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  该字段由评测开发预处理脚本计算派生，对超长仿真基准（如前后工作区快照）做针对性精炼，体量仅 ~{entry.avgTokens} tok，推荐优先用于大模型裁判打分。
+                </p>
+                {entry.script && (
+                  <div className="text-[10px] text-muted-foreground pt-1 border-t">
+                    处理算子/脚本: <Mono className="text-foreground">{entry.script}</Mono>
+                  </div>
+                )}
+              </div>
+            )}
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-medium">说明</span>
               <input
@@ -201,7 +237,7 @@ export function FieldDictView() {
 
             <div className="flex flex-col gap-2">
               <span className="text-xs font-medium">附带上下文</span>
-              <div role="radiogroup" aria-label="附带上下文" className="grid grid-cols-3 gap-0.5 rounded-md border bg-muted/40 p-0.5">
+              <div role="radiogroup" aria-label="附带上下文" className="grid grid-cols-4 gap-0.5 rounded-md border bg-muted/40 p-0.5">
                 {contextKinds.map((k) => (
                   <button
                     key={k.id}
@@ -210,8 +246,8 @@ export function FieldDictView() {
                     aria-checked={entryKind === k.id}
                     onClick={() => setContextKind(entry, k.id)}
                     className={cn(
-                      'h-7 rounded text-xs font-medium transition-colors',
-                      entryKind === k.id ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground',
+                      'h-7 rounded text-[11px] font-medium transition-colors',
+                      entryKind === k.id ? 'bg-card text-foreground shadow-xs font-semibold' : 'text-muted-foreground hover:text-foreground',
                     )}
                   >
                     {k.label}
@@ -220,29 +256,26 @@ export function FieldDictView() {
               </div>
 
               {entry.context?.kind === 'tools' ? (
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    {agent && configVersion ? <Tag className="font-mono">{agent.code}@{configVersion}</Tag> : null}
-                    <Link href="/lines" aria-label="管理工具" className="ml-auto flex size-6 items-center justify-center rounded hover:bg-muted hover:text-foreground">
-                      <Pencil className="size-3" aria-hidden="true" />
-                    </Link>
-                  </div>
-                  {tools.length ? (
-                    <ul className="flex flex-col gap-1">
-                      {tools.map((t) => (
-                        <li key={t.name} className="rounded-md border px-2.5 py-1.5">
-                          <Mono className="font-semibold">{t.name}</Mono>
-                          <p className="mt-0.5 text-xs text-muted-foreground">{t.purpose}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground">暂无工具</p>
-                  )}
-                </div>
+                <ToolsContextEditor
+                  key={entry.logicalName}
+                  allTools={tools}
+                  selectedTools={entry.context.selectedTools}
+                  onSave={(selectedTools) => dict.update(entry.logicalName, { context: { kind: 'tools', selectedTools } })}
+                />
               ) : null}
               {entry.context?.kind === 'enum' ? (
-                <EnumEditor values={entry.context.values} onSave={(values) => dict.update(entry.logicalName, { context: { kind: 'enum', values } })} />
+                <EnumEditor
+                  key={entry.logicalName}
+                  values={entry.context.values}
+                  onSave={(values) => dict.update(entry.logicalName, { context: { kind: 'enum', values } })}
+                />
+              ) : null}
+              {entry.context?.kind === 'note' ? (
+                <NoteContextEditor
+                  key={entry.logicalName}
+                  text={entry.context.text}
+                  onSave={(text) => dict.update(entry.logicalName, { context: { kind: 'note', text } })}
+                />
               ) : null}
             </div>
 
@@ -302,13 +335,16 @@ type EnumValue = { value: string; meaning: string }
 
 function EnumEditor({ values, onSave }: { values: EnumValue[]; onSave: (values: EnumValue[]) => void }) {
   const [rows, setRows] = useState<EnumValue[]>(values)
+  useEffect(() => {
+    setRows(values)
+  }, [values])
   const clean = rows.map((r) => ({ value: r.value.trim(), meaning: r.meaning.trim() })).filter((r) => r.value)
   const dirty = JSON.stringify(clean) !== JSON.stringify(values)
   const patch = (i: number, p: Partial<EnumValue>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...p } : r)))
 
   return (
     <fieldset className="flex flex-col gap-1.5">
-      <legend className="mb-1.5 text-xs text-muted-foreground">取值说明</legend>
+      <legend className="mb-1 text-xs text-muted-foreground">当前字段独立枚举字典 (独立保存)</legend>
       {rows.map((r, i) => (
         <div key={i} className="flex items-center gap-1.5">
           <input
@@ -347,12 +383,104 @@ function EnumEditor({ values, onSave }: { values: EnumValue[]; onSave: (values: 
           type="button"
           disabled={!dirty}
           onClick={() => { onSave(clean); setRows(clean) }}
-          className="inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          className="inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
         >
-          <Check className="size-3" aria-hidden="true" />保存
+          <Check className="size-3" aria-hidden="true" />保存枚举
         </button>
       </div>
     </fieldset>
+  )
+}
+
+function ToolsContextEditor({
+  allTools,
+  selectedTools,
+  onSave,
+}: {
+  allTools: { name: string; purpose: string }[]
+  selectedTools?: string[]
+  onSave: (tools: string[]) => void
+}) {
+  const [selected, setSelected] = useState<string[]>(selectedTools ?? allTools.map((t) => t.name))
+  const toggle = (name: string) => {
+    const next = selected.includes(name) ? selected.filter((t) => t !== name) : [...selected, name]
+    setSelected(next)
+    onSave(next)
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>当前字段独立关联工具 ({selected.length}/{allTools.length})</span>
+        <button
+          type="button"
+          onClick={() => {
+            const next = selected.length === allTools.length ? [] : allTools.map((t) => t.name)
+            setSelected(next)
+            onSave(next)
+          }}
+          className="text-primary hover:underline text-[11px]"
+        >
+          {selected.length === allTools.length ? '全部取消' : '一键全选'}
+        </button>
+      </div>
+      <ul className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+        {allTools.map((t) => {
+          const on = selected.includes(t.name)
+          return (
+            <li
+              key={t.name}
+              onClick={() => toggle(t.name)}
+              className={cn(
+                'flex items-start gap-2 rounded-md border p-2 cursor-pointer transition-colors text-xs',
+                on ? 'border-primary/50 bg-primary/5' : 'hover:bg-muted/30 bg-card',
+              )}
+            >
+              <input type="checkbox" checked={on} readOnly className="mt-0.5 rounded accent-primary" />
+              <div className="min-w-0 flex-1">
+                <Mono className="font-semibold text-foreground text-xs">{t.name}</Mono>
+                <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">{t.purpose}</p>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function NoteContextEditor({ text, onSave }: { text?: string; onSave: (t: string) => void }) {
+  const [val, setVal] = useState(text ?? '')
+  const [dirty, setDirty] = useState(false)
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-[11px] text-muted-foreground">为当前字段配置专属于它的独立业务说明与裁判打分口径：</span>
+      <textarea
+        rows={4}
+        value={val}
+        onChange={(e) => {
+          setVal(e.target.value)
+          setDirty(true)
+        }}
+        placeholder="例如：本字段在多轮交互中用于记录澄清卡的下发与选项选择情况，评测时需比对是否有遗漏选项..."
+        className="w-full rounded-md border bg-card p-2 text-xs leading-relaxed font-mono"
+      />
+      <div className="flex justify-end">
+        <button
+          type="button"
+          disabled={!dirty}
+          onClick={() => {
+            onSave(val.trim())
+            setDirty(false)
+          }}
+          className="inline-flex h-7 items-center gap-1 rounded-md bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
+        >
+          <Check className="size-3" />
+          保存独立口径
+        </button>
+      </div>
+    </div>
   )
 }
 
