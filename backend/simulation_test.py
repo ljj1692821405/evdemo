@@ -137,10 +137,15 @@ def test_run_simulation() -> None:
 
     orig = httpx.AsyncClient
     httpx.AsyncClient = lambda *a, **k: fake_client  # type: ignore[assignment]
+    # 本用例只验证多轮编排与 SSE 抽取，mock httpx 不真连服务；
+    # 因此把 _ensure_ready 的真实配置校验也 patch 掉，避免 CI 等无 config.json 环境误报 500。
+    orig_ensure = sim._ensure_ready
+    sim._ensure_ready = lambda: None  # type: ignore[assignment]
     try:
         traj = asyncio.run(sim.run_simulation({"messages": ["第一轮", "第二轮"]}))
     finally:
         httpx.AsyncClient = orig  # type: ignore[assignment]
+        sim._ensure_ready = orig_ensure  # type: ignore[assignment]
 
     check(traj["session_id"] == "sess_123", "会话 id 解析正确")
     check(len(traj["turns"]) == 2, "两轮都执行", f"-> {len(traj['turns'])}")
