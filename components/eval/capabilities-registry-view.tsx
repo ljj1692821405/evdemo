@@ -65,6 +65,44 @@ const splitLabel = (label: string) => {
 
 type PlaygroundRow = { id: string; key: string; value: string; kind?: 'text' | 'image'; fileName?: string; label?: string }
 
+// ---- 模态驱动的模型路由（超集选择）----
+type Modality = 'text' | 'image' | 'video'
+type ModelInfo = { id: string; name: string; capabilities: string[] }
+
+// 后端不可用时的回退目录（带能力标签，便于离线也能演示超集逻辑）
+const FALLBACK_MODELS: ModelInfo[] = [
+  { id: 'gpt-6.1-sol', name: 'gpt-6.1-sol', capabilities: ['text'] },
+  { id: 'claude-opus-5', name: 'claude-opus-5', capabilities: ['text'] },
+  { id: 'gemini-3.1-pro-preview', name: 'gemini-3.1-pro-preview', capabilities: ['text', 'image'] },
+  { id: 'qwen3.8-max', name: 'qwen3.8-max', capabilities: ['text', 'image'] },
+]
+
+// 根据入参行推导本次用到的模态集合（需求集）
+const requiredModalities = (rows: PlaygroundRow[]): Set<Modality> => {
+  const set = new Set<Modality>(['text']) // 评测提示词本身恒含文本
+  for (const r of rows) {
+    if (!r.value) continue
+    if (r.kind === 'image') set.add('image')
+    // 预留：将来 kind === 'video' 时 set.add('video')
+  }
+  return set
+}
+
+// 模型能力集是否为需求集的超集（能吃下全部模态）
+const coversModalities = (model: ModelInfo, need: Set<Modality>): boolean =>
+  [...need].every((m) => model.capabilities.includes(m))
+
+// 在候选中挑默认裁判：满足超集约束的前提下，
+// 纯文本需求优先“不额外挂视觉/视频”的最专精文本模型（避免用 VLM 当文本裁判），
+// 含图/视频需求则选能力正好覆盖、冗余最少的模型。
+const pickDefaultModel = (models: ModelInfo[], need: Set<Modality>): string => {
+  const eligible = models.filter((m) => coversModalities(m, need))
+  if (eligible.length === 0) return ''
+  const sorted = [...eligible].sort((a, b) => a.capabilities.length - b.capabilities.length)
+  return sorted[0].id
+}
+
+
 const rowsFromCap = (cap?: RegisteredCapability): PlaygroundRow[] =>
   (cap?.inputSchema ?? []).map((f, i) => ({
     id: `${f.name}-${i}`,
@@ -141,29 +179,42 @@ export function CapabilitiesRegistryView() {
   const [playgroundRows, setPlaygroundRows] = useState<PlaygroundRow[]>(() => rowsFromCap(capabilities[0]))
   const [debugResult, setDebugResult] = useState<RegisteredCapability['sampleOutput'] | null>(null)
   const [isDebugRunning, setIsDebugRunning] = useState(false)
-  const [selectedModel, setSelectedModel] = useState<string>('openai/gpt-5.4-mini')
-  const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [selectedModel, setSelectedModel] = useState<string>('')
+  // 保留后端返回的完整模型信息（含 capabilities），用于按模态做超集路由
+  const [modelCatalog, setModelCatalog] = useState<ModelInfo[]>([])
   const [streamingContent, setStreamingContent] = useState<string>('')
   const [selectedCaseId, setSelectedCaseId] = useState<string>('')
 
   // 预选模板状态用于弹窗
   const [templateForModal, setTemplateForModal] = useState<typeof quickTemplates[0] | null>(null)
 
-  // 加载模型列表
+  // 加载模型目录（保留 capabilities，供超集路由使用）
   useEffect(() => {
     import('@/lib/api-client').then(({ llmListModels }) => {
       llmListModels()
         .then((models) => {
-          setAvailableModels(models)
-          if (models.length > 0 && !selectedModel) {
-            setSelectedModel(models[0])
-          }
+          setModelCatalog(models.length > 0 ? models : FALLBACK_MODELS)
         })
         .catch(() => {
-          setAvailableModels(['openai/gpt-5.4-mini', 'anthropic/claude-3-7-sonnet', 'google/gemini-2.5-pro'])
+          setModelCatalog(FALLBACK_MODELS)
         })
     })
   }, [])
+
+  // 本次入参用到的模态集合（需求集）
+  const neededModalities = requiredModalities(playgroundRows)
+  // 满足“能力 ⊇ 需求”的合格裁判（超集模型）
+  const eligibleModels = modelCatalog.filter((m) => coversModalities(m, neededModalities))
+
+  // 需求模态或模型目录变化时，若当前选中的模型已不满足超集约束，自动切到合适的默认模型
+  useEffect(() => {
+    if (modelCatalog.length === 0) return
+    const stillValid = eligibleModels.some((m) => m.id === selectedModel)
+    if (!stillValid) {
+      setSelectedModel(pickDefaultModel(modelCatalog, neededModalities))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelCatalog, [...neededModalities].sort().join(',')])
 
   const filteredCaps = capabilities.filter((c) => {
     const matchesSearch =
@@ -193,8 +244,10 @@ export function CapabilitiesRegistryView() {
     const golden = goldenCases.find((c) => c.id === caseId)
     if (!golden) return
 
-    const rawFields = golden.fields || {}
     const rawAny = (golden.raw as Record<string, any>) || {}
+    // golden case 的真实数据都在 raw 里（CaseItem 没有 fields 字段）；
+    // rawFields 保留为 raw 的别名，避免改动下方多处 rawFields.X ?? rawAny.X 引用
+    const rawFields = rawAny
 
     setPlaygroundRows((prev) =>
       prev.map((row) => {
@@ -258,13 +311,22 @@ export function CapabilitiesRegistryView() {
     setDebugResult(null)
 
     try {
-      const inputData: Record<string, string> = {}
-      for (const row of playgroundRows) {
-        if (row.key && row.value) {
-          inputData[row.key] = row.value
-        }
+      // 按模态组装多模态 content：文本行拼成文字说明，图片行拆成独立 image_url 块
+      const textRows = playgroundRows.filter((r) => r.key && r.value && r.kind !== 'image')
+      const imageRows = playgroundRows.filter((r) => r.key && r.value && r.kind === 'image')
+
+      const textData: Record<string, string> = {}
+      for (const row of textRows) textData[row.key] = row.value
+      const inputJson = JSON.stringify(textData, null, 2)
+
+      const userContent: Array<
+        { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
+      > = [{ type: 'text', text: `【待评测输入插槽数据】:\n${inputJson}` }]
+
+      for (const row of imageRows) {
+        userContent.push({ type: 'text', text: `【图片入参：${row.label || row.key}】` })
+        userContent.push({ type: 'image_url', image_url: { url: row.value } })
       }
-      const inputJson = JSON.stringify(inputData, null, 2)
 
       const { llmChatStream } = await import('@/lib/api-client')
       const startTime = Date.now()
@@ -278,7 +340,7 @@ export function CapabilitiesRegistryView() {
             content:
               '你是一个专业的评测裁判模型。请对传入的评测参数进行审计，给出判决结果：1. 判定得分 (0 或 1)；2. 详细判决依据与理由。输出格式请用清晰的结构呈现。',
           },
-          { role: 'user', content: `【待评测输入插槽数据】:\n${inputJson}` },
+          { role: 'user', content: userContent },
         ],
         model: selectedModel || undefined,
         temperature: 0.1,
@@ -745,7 +807,7 @@ export function CapabilitiesRegistryView() {
                         <option value="">-- 点击选择一条仿真 Golden Case 自动填入 --</option>
                         {goldenCases.map((gc) => {
                           const ds = goldenDatasets.find((d) => d.id === gc.datasetId)
-                          const label = ds ? `${ds.name} (${gc.id})` : (gc.name || gc.id)
+                          const label = ds ? `${ds.name} (${gc.id})` : gc.id
                           return (
                             <option key={gc.id} value={gc.id}>
                               {label}
@@ -848,30 +910,43 @@ export function CapabilitiesRegistryView() {
 
                       {/* 底部执行控制条 */}
                       <div className="pt-3 border-t flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 flex-1">
-                          <span className="text-xs text-muted-foreground shrink-0">裁判模型：</span>
-                          <select
-                            value={selectedModel}
-                            onChange={(e) => setSelectedModel(e.target.value)}
-                            className="h-8 flex-1 min-w-0 rounded border border-input bg-card px-2 text-xs font-mono"
-                            disabled={isDebugRunning}
-                          >
-                            {availableModels.length > 0 ? (
-                              availableModels.map((m) => (
-                                <option key={m} value={m}>
-                                  {m}
-                                </option>
-                              ))
-                            ) : (
-                              <option value="openai/gpt-5.4-mini">openai/gpt-5.4-mini (推荐)</option>
-                            )}
-                          </select>
+                        <div className="flex flex-col gap-1 flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground shrink-0">裁判模型：</span>
+                            <select
+                              value={selectedModel}
+                              onChange={(e) => setSelectedModel(e.target.value)}
+                              className="h-8 flex-1 min-w-0 rounded border border-input bg-card px-2 text-xs font-mono"
+                              disabled={isDebugRunning}
+                            >
+                              {modelCatalog.length > 0 ? (
+                                modelCatalog.map((m) => {
+                                  const ok = coversModalities(m, neededModalities)
+                                  const caps = m.capabilities.join('+')
+                                  const missing = [...neededModalities].filter((x) => !m.capabilities.includes(x))
+                                  return (
+                                    <option key={m.id} value={m.id} disabled={!ok}>
+                                      {m.id} [{caps}]{ok ? '' : ` · 缺 ${missing.join('/')}`}
+                                    </option>
+                                  )
+                                })
+                              ) : (
+                                <option value="">加载模型中...</option>
+                              )}
+                            </select>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground pl-[4.5rem]">
+                            本次入参模态：
+                            <span className="font-mono text-foreground">{[...neededModalities].join(' + ')}</span>
+                            {' '}· 可用超集模型 {eligibleModels.length} 个
+                            {neededModalities.has('image') && ' · 已按视觉能力自动筛选 VLM'}
+                          </div>
                         </div>
                         <Btn
                           variant="primary"
                           size="sm"
                           onClick={runPlaygroundDebug}
-                          disabled={isDebugRunning}
+                          disabled={isDebugRunning || !selectedModel}
                         >
                           <Play className="size-3.5" />
                           {isDebugRunning ? '裁判执行中...' : '试跑真机评测'}

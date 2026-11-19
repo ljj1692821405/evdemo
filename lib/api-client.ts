@@ -693,3 +693,40 @@ export async function getCapabilities(): Promise<CapabilitiesDTO> {
   return body.data
 }
 
+
+// ========== 评分器调试台：即席试跑评判 ==========
+
+export interface JudgeDryRunRequest {
+  userQuery?: string
+  groundTruth?: string
+  agentReply?: string
+  rubric?: string
+  model?: string
+  dimension?: string
+}
+
+export interface JudgeDryRunResult {
+  score: number
+  pass: boolean
+  evidenceAnalysis: string
+  reason: string
+  model?: string
+  latencyMs: number
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null
+}
+
+/**
+ * 即席试跑一次 LLM 评判（不落库、不需要 result_id）。
+ * 供评分器调试台「运行试跑」按钮使用，走后端真实裁判模型。
+ */
+export async function judgeDryRun(req: JudgeDryRunRequest): Promise<JudgeDryRunResult> {
+  const res = await fetch(`${API_BASE}/api/judges/dry-run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...scopeHeaders() },
+    body: JSON.stringify(req),
+  })
+  const body = (await res.json()) as ApiResponse<JudgeDryRunResult>
+  if (!body.ok || !body.data) throw new Error(body.error || '评判试跑失败')
+  return body.data
+}
+

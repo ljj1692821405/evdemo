@@ -199,7 +199,12 @@ export type Scorer = {
   evidenceScript?: string
   status: 'draft' | 'published'
   version: number
-  createdBy: string
+  createdBy?: string
+  // 前端新建评分器时写入的溯源元数据（当前仅记录、未被读取）；
+  // 与 createdBy 并存是因为种子数据用 createdBy、组件新建用 author，命名历史不一致
+  author?: string
+  updatedAt?: string
+  referenceCapabilityId?: string
 }
 
 const scorerIdOfDim = (dim: string) => dimDefs.find((d) => d.key === dim)?.scorerId ?? dimDefs[0].scorerId

@@ -4,8 +4,9 @@ import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { experiments, runs, simJobs as initialJobs, snapshots as initialSnaps, type SimJob, type SimJobStatus, type Snapshot } from '@/lib/mock-data'
+import { experiments, runs, snapshots as initialSnaps, type SimJobStatus, type Snapshot } from '@/lib/mock-data'
 import { useDatasets } from '@/lib/dataset-store'
+import { useSimulations } from '@/lib/simulation-store'
 import { useStages } from '@/lib/stage-store'
 import { useCapabilities } from '@/lib/capability-store'
 import { resolveConfig } from '@/lib/capability-data'
@@ -51,36 +52,18 @@ const datasetName = (name: string | undefined) =>
 const selectCls = 'h-9 rounded-md border border-input bg-card px-2.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring'
 
 export function SimulationsView() {
-  const { datasets } = useDatasets()
+  const { datasets, cases } = useDatasets()
   const { agent } = useScope()
-  const { freezeConfigVersion, attachSnapshot, findStage, findConfigVersion, stageOfConfigVersion } = useStages(agent?.id)
+  const { freezeConfigVersion, attachSnapshot, findStage, findConfigVersion } = useStages(agent?.id)
   const { assets, currentOf } = useCapabilities()
-  const [jobs, setJobs] = useState<SimJob[]>(initialJobs)
+  const { jobs, submit } = useSimulations()
   const [snaps, setSnaps] = useState<Snapshot[]>(initialSnaps)
   const [dsId, setDsId] = useState(datasets[0]?.id ?? '')
   const [script, setScript] = useState(scripts[0])
   const [openJob, setOpenJob] = useState<string | null>(null)
   const [openSnap, setOpenSnap] = useState<string | null>(null)
 
-  const active = jobs.some((j) => j.status === 'running' || j.status === 'pending')
-
-  useEffect(() => {
-    if (!active) return
-    const timer = setInterval(() => {
-      setJobs((list) =>
-        list.map((j) => {
-          if (j.status === 'pending') return { ...j, status: 'running' }
-          if (j.status !== 'running') return j
-          const done = Math.min(j.total, j.done + 3)
-          if (done < j.total) return { ...j, done }
-          const rate = j.failed / j.total
-          const status: SimJobStatus = rate >= 0.2 ? 'failed' : rate > 0 ? 'partial_failed' : 'completed'
-          return { ...j, done, status, snapshotId: status === 'failed' ? undefined : `snap_${j.id.slice(4)}` }
-        }),
-      )
-    }, 900)
-    return () => clearInterval(timer)
-  }, [active])
+  // 任务进度由后端异步执行、useSimulations 轮询刷新，无需前端模拟进度
 
   useEffect(() => {
     jobs.forEach((j) => {
@@ -94,19 +77,16 @@ export function SimulationsView() {
     })
   }, [jobs, snaps, attachSnapshot])
 
-  const start = () => {
+  const start = async () => {
     const ds = datasets.find((d) => d.id === dsId) ?? datasets[0]
     if (!ds) return
-    const id = `job_${1108 + jobs.length - initialJobs.length}`
 
-    // 仿真前在当前阶段内自动冻结配置版本（配置未变则复用）
-    let stageId: string | undefined
-    let configVersionId: string | undefined
+    // 仿真前在当前阶段内自动冻结配置版本（配置未变则复用）—— 前端特有逻辑，保留
     if (agent) {
       const cfg = currentOf(agent.id)
       const items = cfg ? resolveConfig(cfg, assets) : []
       const target = agent.models.find((m) => m.role === 'target')?.model ?? '—'
-      const cv = freezeConfigVersion({
+      freezeConfigVersion({
         agentId: agent.id,
         configVersion: `${agent.code}@${cfg?.version ?? 'v1.0'}`,
         frozenAt: '刚刚',
@@ -119,13 +99,20 @@ export function SimulationsView() {
           .filter((i) => i.asset.kind === 'tool')
           .map((i) => ({ code: i.asset.code, name: i.asset.name, version: i.ver.version })),
       })
-      if (cv) {
-        configVersionId = cv.id
-        stageId = stageOfConfigVersion(cv.id)?.id
-      }
     }
 
-    setJobs((j) => [{ id, datasetId: ds.id, script, status: 'pending', done: 0, total: ds.caseCount, failed: 0, startedAt: '刚刚', stageId, configVersionId, errors: [] }, ...j])
+    // 把数据集里的 case 转成后端 input_data：每条一个 user_query（多轮用 messages）
+    const inputData = cases
+      .filter((c) => c.datasetId === ds.id)
+      .map((c) => ({
+        case_id: c.id,
+        user_query: c.query[0] ?? '',
+        messages: c.query,
+      }))
+    if (inputData.length === 0) return
+
+    // 真实提交到后端 POST /api/tasks；成功后 useSimulations 会轮询刷新进度
+    await submit(inputData)
   }
 
   return (

@@ -86,6 +86,45 @@ async def judge_single(req: JudgeRequest, _role: str = rbac.require(rbac.PERM_JU
     return ok({"judgementId": judge_id, **judgement})
 
 
+class DryRunJudgeRequest(BaseModel):
+    """即席试跑评判：不依赖落库结果，直接传入 case 输入与待评回复。
+
+    供「评分器调试台」使用——选一条 golden case 即时跑真实裁判 LLM，
+    结果只返回给前端展示，不写 judge_results 表、不需要 result_id。
+    """
+    userQuery: str = Field(default="", alias="user_query", description="任务要求/用户诉求")
+    groundTruth: str = Field(default="", alias="ground_truth", description="参考答案，可空")
+    agentReply: str = Field(default="", alias="agent_reply", description="待评回复")
+    rubric: str = Field(default="", description="自定义评分标准，留空用默认")
+    model: str = Field(default="", description="裁判模型，留空用 config.json 的 llm.model")
+    dimension: str = Field(default="answer_quality", description="打分维度名")
+
+    model_config = {"populate_by_name": True}
+
+
+@router.post("/dry-run")
+async def judge_dry_run(
+    req: DryRunJudgeRequest, _role: str = rbac.require(rbac.PERM_JUDGE_RUN)
+) -> dict[str, Any]:
+    """即席试跑一次评判（不落库）。复用 judge_service.judge_one 的真实裁判逻辑。"""
+    case_input = {
+        "user_query": req.userQuery,
+        "gt": req.groundTruth,
+    }
+    processed_output = {"final_reply": req.agentReply}
+    cfg = {
+        "rubric": req.rubric,
+        "model": req.model,
+        "gt_field": "gt",
+        "reply_field": "final_reply",
+        "dimension": req.dimension,
+        "enabled": True,
+    }
+
+    judgement = await judge_service.judge_one(case_input, processed_output, cfg)
+    return ok(judgement)
+
+
 @router.post("/batch")
 async def judge_batch(req: BatchJudgeRequest, _role: str = rbac.require(rbac.PERM_JUDGE_RUN)) -> dict[str, Any]:
     """对一个任务下所有 completed 结果批量打分，返回汇总。"""

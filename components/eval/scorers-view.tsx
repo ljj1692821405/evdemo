@@ -98,8 +98,10 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
     score: number
     pass: boolean
     evidence: string
+    reason?: string
     latencyMs: number
     timestamp: string
+    error?: string
   } | null>(null)
 
   const s = list.find((x) => x.id === sel) || list[0]
@@ -126,6 +128,63 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
     const nextTemplate = `${base}\n\n# 评测裁判判定准绳 (Rubrics)\n${newRubricStr}`
     update({ promptTemplate: nextTemplate })
   }
+
+  // 评分器调试台「运行试跑」：走后端真实裁判 LLM（/api/judges/dry-run，不落库）
+  const handleDryRun = async () => {
+    setIsDebugging(true)
+    setDebugResult(null)
+    try {
+      const { judgeDryRun } = await import('@/lib/api-client')
+      const { caseTurns } = await import('@/lib/case-shape')
+
+      const gc = goldenCases.find((c) => c.id === testCaseId)
+      const turns = gc ? caseTurns(gc) : []
+      const firstTurn = turns[0]
+      const userQuery = firstTurn?.query || gc?.query?.[0] || ''
+      // 参考答案：把该轮所有 GT 要点拼成文本
+      const groundTruth = (firstTurn?.gt || [])
+        .flatMap((g) => g.points)
+        .filter(Boolean)
+        .join('\n')
+      // 调试台没有真实 Agent 回复，用参考答案自测：验证评分器在「回复正确」时能否判 pass
+      const agentReply = groundTruth || userQuery
+
+      // 当前评分器的评分标准口径
+      const rubric =
+        currentDim?.scoreType === 'scale_5'
+          ? `# 评分准绳（1~5 分量表）\n5分: ${currentCriteria.score5}\n4分: ${currentCriteria.score4}\n3分: ${currentCriteria.score3}\n2分: ${currentCriteria.score2}\n1分: ${currentCriteria.score1}`
+          : currentBinaryText
+
+      const res = await judgeDryRun({
+        userQuery,
+        groundTruth,
+        agentReply,
+        rubric,
+        dimension: selectedDimKey,
+      })
+
+      setDebugResult({
+        score: res.score,
+        pass: res.pass,
+        evidence: res.evidenceAnalysis || res.reason || '（裁判未返回推导过程）',
+        reason: res.reason,
+        latencyMs: res.latencyMs,
+        timestamp: '刚刚',
+      })
+    } catch (err: any) {
+      setDebugResult({
+        score: 0,
+        pass: false,
+        evidence: `试跑失败：${err?.message || String(err)}。请确认后端已启动且 LLM 渠道已配置。`,
+        latencyMs: 0,
+        timestamp: '刚刚',
+        error: err?.message || String(err),
+      })
+    } finally {
+      setIsDebugging(false)
+    }
+  }
+
 
   const usesPrompt = s ? s.implType !== 'script' : false
   const template = s?.promptTemplate ?? (s ? defaultPrompt(s.inputFields) : '')
@@ -160,7 +219,7 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
     const newScorer: Scorer = {
       id: newScorerId,
       name: `${newDimName}评分器`,
-      version: 'v1.0.0',
+      version: 1,
       status: 'draft',
       implType: cap.executionType === 'python_adapter' ? 'script' : 'llm_judge',
       inputFields: defaultFields,
@@ -716,19 +775,7 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                                 variant="primary"
                                 disabled={isDebugging}
                                 className="shrink-0 h-8"
-                                onClick={() => {
-                                  setIsDebugging(true)
-                                  setTimeout(() => {
-                                    setIsDebugging(false)
-                                    setDebugResult({
-                                      score: 1,
-                                      pass: true,
-                                      evidence: `[调试样例 ${testCaseId}] 经裁判客观审计：Agent 先行下发澄清卡确认诉求，在用户选择后再精准写回文件，全流程符合业务合规准绳。`,
-                                      latencyMs: 890,
-                                      timestamp: '刚刚',
-                                    })
-                                  }, 500)
-                                }}
+                                onClick={handleDryRun}
                               >
                                 <Play className="size-3" />
                                 {isDebugging ? '试跑中...' : '运行试跑'}
@@ -736,11 +783,11 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                             </div>
 
                             {debugResult && (
-                              <div className="flex flex-col gap-2 rounded-lg border border-pass/30 bg-card p-2.5 shadow-2xs">
+                              <div className={cn('flex flex-col gap-2 rounded-lg border bg-card p-2.5 shadow-2xs', debugResult.error ? 'border-fail/40' : debugResult.pass ? 'border-pass/30' : 'border-warn/40')}>
                                 <div className="flex items-center justify-between border-b pb-1">
-                                  <span className="flex items-center gap-1 font-bold text-xs text-pass">
+                                  <span className={cn('flex items-center gap-1 font-bold text-xs', debugResult.error ? 'text-fail' : debugResult.pass ? 'text-pass' : 'text-warn')}>
                                     <CheckCircle2 className="size-3.5" />
-                                    试跑判定通过 (Pass)
+                                    {debugResult.error ? '试跑失败' : debugResult.pass ? '试跑判定通过 (Pass)' : '试跑判定未通过 (Fail)'}
                                   </span>
                                   <span className="font-mono text-[10px] text-muted-foreground">
                                     耗时 {debugResult.latencyMs}ms
@@ -754,7 +801,7 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                                   </div>
                                   <div className="rounded bg-muted/40 p-1">
                                     <span className="text-muted-foreground text-[10px]">pass 状态：</span>
-                                    <span className="font-mono font-bold text-pass ml-1">TRUE</span>
+                                    <span className={cn('font-mono font-bold ml-1', debugResult.pass ? 'text-pass' : 'text-fail')}>{debugResult.pass ? 'TRUE' : 'FALSE'}</span>
                                   </div>
                                 </div>
 

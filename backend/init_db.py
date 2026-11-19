@@ -292,6 +292,32 @@ def init_db() -> None:
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_open_id ON eval_sessions(open_id);")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON eval_sessions(expires_at);")
 
+                # 默认仿真流程：让前端「开始仿真」开箱即用，无需先建 flow（也满足 eval_tasks 外键）。
+                # 用 ON CONFLICT DO NOTHING，重复执行 init_db 不会报错也不会覆盖用户后来的修改。
+                print("[*] 写入默认仿真流程 flow_default_sim ...")
+                cur.execute(
+                    """
+                    INSERT INTO eval_flow_configs (
+                        flow_id, name, description, version, status, org_id,
+                        product_line_id, agent_id,
+                        input_schema, simulation_config, output_schema, judge_config, created_by
+                    ) VALUES (
+                        'flow_default_sim', '默认仿真流程',
+                        '前端开箱即用的默认流程：按 case 的 user_query / messages 跑多轮仿真',
+                        '1.0', 'active', 'default', '', '',
+                        %s, %s, %s, %s, 'system'
+                    )
+                    ON CONFLICT (flow_id) DO NOTHING
+                    """,
+                    (
+                        '{"required_fields": ["user_query"], "optional_fields": ["messages", "gt"]}',
+                        '{"retries": 1, "timeout": 120}',
+                        '{"fields": [{"name": "final_reply", "source": "final_reply"}, '
+                        '{"name": "turn_count", "source": "turns_count"}]}',
+                        '{}',
+                    ),
+                )
+
                 conn.commit()
                 print("[+] 评测平台表结构初始化完成")
                 print("[+] 所有表初始化完成")

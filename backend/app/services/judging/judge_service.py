@@ -73,7 +73,10 @@ def _build_messages(
             "content": (
                 f"【任务要求】\n{question or '（未提供，请按回复自身质量判断）'}\n\n"
                 f"【参考答案】\n{reference_text}\n\n"
-                f"【待评回复】\n{reply_text}"
+                f"【待评回复】\n{reply_text}\n\n"
+                "请只输出 JSON 对象，结构为："
+                '{"score": 0或1, "pass": true或false, '
+                '"evidence_analysis": "推导过程", "reason": "一句话结论"}'
             ),
         },
     ]

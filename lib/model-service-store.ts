@@ -50,33 +50,3 @@ export function useModelServices() {
 
   return { channels, addChannel, removeChannel, toggleChannel }
 }
-
-
-export const maskKey = (key: string) => {
-  if (key.length <= 8) return '••••'
-  return `${key.slice(0, 6)}••••${key.slice(-4)}`
-}
-
-export function useModelServices() {
-  const [channels, setChannels] = useShared<ModelChannel[]>('model-channels', seedChannels)
-
-  const addChannel = useCallback(
-    (channel: ModelChannel) => setChannels((prev) => [channel, ...prev]),
-    [setChannels],
-  )
-
-  const removeChannel = useCallback(
-    (id: string) => setChannels((prev) => prev.filter((c) => c.id !== id)),
-    [setChannels],
-  )
-
-  const toggleChannel = useCallback(
-    (id: string) =>
-      setChannels((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, status: c.status === 'active' ? 'disabled' : 'active' } : c)),
-      ),
-    [setChannels],
-  )
-
-  return { channels, addChannel, removeChannel, toggleChannel }
-}

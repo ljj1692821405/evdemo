@@ -356,7 +356,7 @@ export function CapabilityImportModal({
     const newScorer: Scorer = {
       id: `sc_${currentCap.id.replace('cap_', '')}_${Date.now().toString().slice(-4)}`,
       name: scorerName.trim() || `${currentCap.name}评分器`,
-      version: 'v1.0.0',
+      version: 1,
       status: 'draft',
       implType: currentCap.executionType === 'python_adapter' ? 'script' : 'llm_judge',
       inputFields: activeInputs.map((f) => mappings[f.name].field || f.name),
