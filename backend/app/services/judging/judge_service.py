@@ -82,16 +82,86 @@ def _build_messages(
     ]
 
 
-async def judge_one(
-    case_input: dict[str, Any],
-    processed_output: dict[str, Any],
-    cfg: dict[str, Any],
+def _coerce_text(value: Any) -> str:
+    """把任意入参值规整成可读文本。"""
+    if value in (None, "", [], {}):
+        return ""
+    return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+
+
+def build_messages_from_inputs(
+    inputs: list[dict[str, Any]],
+    rubric: str = "",
+) -> list[dict[str, Any]]:
+    """通用判决引擎的提示词组装：N 个命名入参（可多模态）+ 评分准绳 → messages。
+
+    inputs 每项：{"name": 展示名, "modality": "text"|"image"|"video", "value": 值}
+    - text  入参 → user content 里一段带小标题的文本块
+    - image 入参 → user content 里一个 image_url 块（value 为 URL 或 data URL）
+
+    与旧的「固定三槽」相比，这里不预设入参个数与命名，
+    意图识别(1 槽)、安全性(2 槽)、忠实度(5 槽)、图文混合都走同一条路径。
+    """
+    rubric_text = (rubric or DEFAULT_RUBRIC).strip()
+
+    # user content 组装成多模态数组（纯文本时也用数组，call_json 透传给上游，OpenAI 兼容）
+    parts: list[dict[str, Any]] = []
+    has_image = False
+    for item in inputs or []:
+        name = str(item.get("name") or "入参")
+        modality = (item.get("modality") or "text").lower()
+        value = item.get("value")
+
+        if modality == "image":
+            url = _coerce_text(value)
+            if not url:
+                continue
+            parts.append({"type": "text", "text": f"【{name}】"})
+            parts.append({"type": "image_url", "image_url": {"url": url}})
+            has_image = True
+        else:
+            text = _coerce_text(value) or "（未提供）"
+            parts.append({"type": "text", "text": f"【{name}】\n{text}"})
+
+    parts.append(
+        {
+            "type": "text",
+            "text": (
+                "请只输出 JSON 对象，结构为："
+                '{"score": 0或1, "pass": true或false, '
+                '"evidence_analysis": "推导过程", "reason": "一句话结论"}'
+            ),
+        }
+    )
+
+    # 纯文本场景把数组压回字符串，保持与旧链路/旧日志一致；含图才用多模态数组
+    if has_image:
+        user_content: Any = parts
+    else:
+        user_content = "\n\n".join(p["text"] for p in parts)
+
+    return [
+        {"role": "system", "content": rubric_text},
+        {"role": "user", "content": user_content},
+    ]
+
+
+async def judge_inputs(
+    inputs: list[dict[str, Any]],
+    *,
+    rubric: str = "",
+    model: str | None = None,
+    dimension: str = "answer_quality",
 ) -> dict[str, Any]:
-    """对单条结果打分，返回统一结构（camelCase）。"""
-    messages = _build_messages(case_input, processed_output, cfg)
+    """通用判决引擎主干：N 个命名入参（可多模态）→ 真实裁判 LLM → 统一结构。
+
+    这是「能力=纯引擎」契约在后端的落点：调用方（评分器/调试台）决定有哪些入参，
+    引擎只负责组装、调模型、产出 score/pass/evidence。
+    """
+    messages = build_messages_from_inputs(inputs, rubric)
     result = await call_json(
         messages,
-        model=cfg.get("model") or None,
+        model=model or None,
         temperature=0.0,
         response_schema=JudgeScore,
     )
@@ -101,10 +171,54 @@ async def judge_one(
         "pass": bool(parsed.get("pass", parsed.get("pass_", False))),
         "evidenceAnalysis": parsed.get("evidence_analysis") or "",
         "reason": parsed.get("reason") or "",
+        "dimension": dimension,
         "model": result.get("model"),
         "latencyMs": int(result.get("latency_ms") or 0),
         "usage": result.get("usage"),
     }
+
+
+async def judge_one(
+    case_input: dict[str, Any],
+    processed_output: dict[str, Any],
+    cfg: dict[str, Any],
+) -> dict[str, Any]:
+    """对单条结果打分，返回统一结构（camelCase）。
+
+    向后兼容适配器：把旧的「任务要求/参考答案/待评回复」三槽转成通用 inputs，
+    再委托 judge_inputs。批量评判、落库链路沿用此函数，无需改动。
+    """
+    gt_field = cfg.get("gt_field") or "gt"
+    reply_field = cfg.get("reply_field") or "final_reply"
+
+    reference = case_input.get(gt_field)
+    if reference in (None, "", [], {}):
+        reference_text = "（本条 case 未提供参考答案，请仅依据任务要求判断）"
+    else:
+        reference_text = _coerce_text(reference)
+
+    reply_text = _coerce_text(processed_output.get(reply_field))
+
+    question = ""
+    for key in ("user_query", "query", "question", "input"):
+        value = case_input.get(key)
+        if value:
+            question = _coerce_text(value)
+            break
+
+    inputs = [
+        {"name": "任务要求", "modality": "text", "value": question or "（未提供，请按回复自身质量判断）"},
+        {"name": "参考答案", "modality": "text", "value": reference_text},
+        {"name": "待评回复", "modality": "text", "value": reply_text},
+    ]
+    judgement = await judge_inputs(
+        inputs,
+        rubric=cfg.get("rubric") or "",
+        model=cfg.get("model") or None,
+        dimension=cfg.get("dimension") or "answer_quality",
+    )
+    # 旧调用方不消费 dimension 字段，这里保留其余键，行为与此前一致
+    return judgement
 
 
 def save_judgement(
