@@ -231,7 +231,7 @@ export function CapabilitiesRegistryView() {
     setSelectedId(capId)
     const cap = capabilities.find((c) => c.id === capId)
     setPlaygroundRows(rowsFromCap(cap))
-    setDebugResult(cap?.sampleOutput ?? null)
+    setDebugResult(null)
     setSelectedCaseId('')
     setStreamingContent('')
   }
@@ -398,7 +398,6 @@ export function CapabilitiesRegistryView() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-bold text-foreground">通用评测能力库</h1>
-                <Tag tone="primary">{capabilities.length} 项标准服务</Tag>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 标准化传参输入、裁判调度与打分契约，供各业务评测维度直接复用。
@@ -629,20 +628,38 @@ export function CapabilitiesRegistryView() {
               {/* Tab 1: 三段式流水线装配总览 (PM 核心看板) */}
               {viewTab === 'pipeline' && (
                 <div className="mt-4 space-y-5 text-xs">
+                  {/* 引擎流程条：入参 → 裁判 → 结果（靠箭头与图标自明，无需文字解释） */}
+                  <div className="flex items-stretch gap-2 rounded-xl border bg-muted/20 p-2.5">
+                    <div className="flex flex-1 items-center justify-center gap-2 rounded-lg border bg-card px-3 py-2.5">
+                      <Layers className="size-4 text-primary" />
+                      <span className="font-semibold text-foreground">入参</span>
+                    </div>
+                    <div className="flex items-center justify-center text-muted-foreground">
+                      <ArrowRight className="size-4" />
+                    </div>
+                    <div className="flex flex-1 items-center justify-center gap-2 rounded-lg border bg-card px-3 py-2.5">
+                      <Cpu className="size-4 text-pass" />
+                      <span className="font-semibold text-foreground">裁判</span>
+                    </div>
+                    <div className="flex items-center justify-center text-muted-foreground">
+                      <ArrowRight className="size-4" />
+                    </div>
+                    <div className="flex flex-1 items-center justify-center gap-2 rounded-lg border bg-card px-3 py-2.5">
+                      <CheckCircle2 className="size-4 text-warn" />
+                      <span className="font-semibold text-foreground">结果</span>
+                    </div>
+                  </div>
+
                   {/* 可视化数据流看板 */}
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                     {/* 第 1 步：输入插槽 */}
                     <div className="flex flex-col rounded-lg border bg-muted/10 p-3.5">
-                      <div className="flex items-center justify-between border-b pb-2">
+                      <div className="flex items-center border-b pb-2">
                         <span className="font-semibold text-foreground flex items-center gap-1.5">
                           <Layers className="size-3.5 text-primary" />
                           1. 仿真输入插槽 (Input)
                         </span>
-                        <Tag tone="primary">动态开放 · 不设数量上限</Tag>
                       </div>
-                      <p className="mt-1.5 text-[11px] text-muted-foreground">
-                        作为通用底座，上层维度可按需组合、挑选或自由注入任意数量的仿真字段：
-                      </p>
                       <div className="mt-3 flex flex-col gap-2">
                         {currentCap.inputSchema.map((f) => (
                           <div
@@ -654,35 +671,29 @@ export function CapabilitiesRegistryView() {
                               <Mono className="text-[10px] text-muted-foreground">{f.name}</Mono>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              <Tag tone="neutral" className="font-mono text-[9px]">
+                              <Tag tone={f.type === 'image' ? 'warn' : 'neutral'} className="gap-1 font-mono text-[9px]">
+                                {f.type === 'image' ? <ImageIcon className="size-3" /> : <FileText className="size-3" />}
                                 {f.type}
-                              </Tag>
-                              <Tag tone="pass" className="text-[9px]">
-                                按需选用
                               </Tag>
                             </div>
                           </div>
                         ))}
 
-                        {/* 动态开放拓展提示与操作 */}
-                        <div className="rounded border border-dashed border-primary/30 bg-primary/5 p-2 text-center text-[10px] text-muted-foreground">
-                          支持从同一份仿真日志中提取任意字段组合（如 2个、3个或 100+个），独立输入 LLM 进行评测
+                        <div className="flex items-center justify-center gap-1.5 rounded border border-dashed border-primary/30 bg-primary/5 py-1.5 text-[11px] font-medium text-primary">
+                          <Plus className="size-3.5" />
+                          入参不限个数，按需增减
                         </div>
                       </div>
                     </div>
 
                     {/* 第 2 步：裁判大脑 */}
                     <div className="flex flex-col rounded-lg border bg-muted/10 p-3.5">
-                      <div className="flex items-center justify-between border-b pb-2">
+                      <div className="flex items-center border-b pb-2">
                         <span className="font-semibold text-foreground flex items-center gap-1.5">
                           <Cpu className="size-3.5 text-pass" />
                           2. 裁判大脑 (Engine)
                         </span>
-                        <Tag tone="pass">已就绪</Tag>
                       </div>
-                      <p className="mt-1.5 text-[11px] text-muted-foreground">
-                        底层采用标准化的执行调度内核：
-                      </p>
                       <div className="mt-3 flex flex-col gap-2.5">
                         <div className="rounded border bg-card p-2.5 text-[11px]">
                           <div className="text-muted-foreground text-[10px]">裁判方式</div>
@@ -712,16 +723,12 @@ export function CapabilitiesRegistryView() {
 
                     {/* 第 3 步：输出契约 */}
                     <div className="flex flex-col rounded-lg border bg-muted/10 p-3.5">
-                      <div className="flex items-center justify-between border-b pb-2">
+                      <div className="flex items-center border-b pb-2">
                         <span className="font-semibold text-foreground flex items-center gap-1.5">
                           <CheckCircle2 className="size-3.5 text-warn" />
                           3. 输出打分标尺 (Output)
                         </span>
-                        <Tag tone="warn">标准化交付</Tag>
                       </div>
-                      <p className="mt-1.5 text-[11px] text-muted-foreground">
-                        执行完毕后向评分器输出结构化结果：
-                      </p>
                       <div className="mt-3 flex flex-col gap-2.5">
                         <div className="rounded border bg-card p-2.5 text-[11px]">
                           <div className="text-muted-foreground text-[10px]">主判定分值 (score)</div>
@@ -756,9 +763,6 @@ export function CapabilitiesRegistryView() {
                           <Boxes className="size-3.5 text-primary" />
                           已直接支撑的业务评测维度 ({currentCap.supportedDimensions.length})
                         </div>
-                        <p className="mt-1 text-[11px] text-muted-foreground">
-                          这些业务维度都直接复用了本能力的输入插槽与裁判逻辑，只需为它们注入不同的 Prompt 判定准绳：
-                        </p>
                       </div>
 
                       <a href={`/scorers?importCap=${currentCap.id}`}>
@@ -794,7 +798,7 @@ export function CapabilitiesRegistryView() {
                     <div className="flex items-center gap-2">
                       <Database className="size-3.5 text-primary" />
                       <span className="font-semibold text-foreground text-xs">
-                        从真实仿真用例一键载入样本：
+                        载入仿真样本
                       </span>
                     </div>
 
@@ -804,7 +808,7 @@ export function CapabilitiesRegistryView() {
                         onChange={(e) => handleLoadSampleFromCase(e.target.value)}
                         className="h-8 w-full rounded border border-input bg-card px-2 text-xs"
                       >
-                        <option value="">-- 点击选择一条仿真 Golden Case 自动填入 --</option>
+                        <option value="">Golden Case ▾</option>
                         {goldenCases.map((gc) => {
                           const ds = goldenDatasets.find((d) => d.id === gc.datasetId)
                           const label = ds ? `${ds.name} (${gc.id})` : gc.id
@@ -922,11 +926,9 @@ export function CapabilitiesRegistryView() {
                               {modelCatalog.length > 0 ? (
                                 modelCatalog.map((m) => {
                                   const ok = coversModalities(m, neededModalities)
-                                  const caps = m.capabilities.join('，')
-                                  const missing = [...neededModalities].filter((x) => !m.capabilities.includes(x))
                                   return (
                                     <option key={m.id} value={m.id} disabled={!ok}>
-                                      {m.id} [{caps}]{ok ? '' : ` · 缺 ${missing.join('/')}`}
+                                      {ok ? '' : '🚫 '}{m.id}
                                     </option>
                                   )
                                 })
@@ -935,11 +937,18 @@ export function CapabilitiesRegistryView() {
                               )}
                             </select>
                           </div>
-                          <div className="text-[10px] text-muted-foreground pl-[4.5rem]">
-                            本次入参模态：
-                            <span className="font-mono text-foreground">{[...neededModalities].join(' + ')}</span>
-                            {' '}· 可用超集模型 {eligibleModels.length} 个
-                            {neededModalities.has('image') && ' · 已按视觉能力自动筛选 VLM'}
+                          <div className="flex items-center gap-1.5 pl-[4.5rem]">
+                            {[...neededModalities].map((mod) => (
+                              <Tag key={mod} tone={mod === 'image' ? 'warn' : 'neutral'} className="gap-1 font-mono text-[9px]">
+                                {mod === 'image' ? <ImageIcon className="size-3" /> : <FileText className="size-3" />}
+                                {mod}
+                              </Tag>
+                            ))}
+                            <ArrowRight className="size-3 text-muted-foreground" />
+                            <Tag tone="pass" className="gap-1 font-mono text-[9px]">
+                              <Cpu className="size-3" />
+                              {eligibleModels.length}
+                            </Tag>
                           </div>
                         </div>
                         <Btn

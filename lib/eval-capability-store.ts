@@ -180,7 +180,7 @@ export const seedCapabilities: RegisteredCapability[] = [
   {
     id: 'cap_t2i',
     code: 'eval.t2i.universal',
-    name: '文生图评价 (Text-to-Image)',
+    name: '文生图评价',
     category: 'multimodal_gen',
     version: 'v2.1.0',
     status: 'published',
@@ -278,7 +278,7 @@ export const seedCapabilities: RegisteredCapability[] = [
   {
     id: 'cap_i2v',
     code: 'eval.i2v.temporal',
-    name: '图生视频时序评价 (Image-to-Video)',
+    name: '图生视频时序评价',
     category: 'multimodal_gen',
     version: 'v1.4.0',
     status: 'published',
@@ -355,7 +355,7 @@ export const seedCapabilities: RegisteredCapability[] = [
   {
     id: 'cap_code_ast',
     code: 'eval.code.ast_compliance',
-    name: '代码 AST 规范与安全校验 (Python/TS)',
+    name: '代码 AST 规范与安全校验',
     category: 'custom',
     version: 'v1.1.0',
     status: 'published',
