@@ -42,10 +42,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 4. 跑测试。三套测试任意一套失败，这一步就红，整个 CI 失败
-      #    测试都是 mock 的，不需要真实 config.json / 数据库
+      # 4. 跑测试。任意一套失败，这一步就红，整个 CI 失败
+      #    测试都是 mock / 本地假上游，不需要真实 config.json / 数据库 / LLM
       - name: 运行测试
         working-directory: backend
         run: |
           python enhancement_test.py
           python simulation_test.py
+          python model_route_test.py
+          python loop_affinity_test.py
