@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-store'
 function LoginCard() {
   const router = useRouter()
   const params = useSearchParams()
-  const { user, feishuConfigured, loading, login, isLoggedIn } = useAuth()
+  const { user, feishuConfigured, backendOnline, loading, login, isLoggedIn } = useAuth()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -48,13 +48,23 @@ function LoginCard() {
               <button
                 type="button"
                 onClick={onLogin}
-                disabled={busy || !feishuConfigured}
+                disabled={busy || !feishuConfigured || !backendOnline}
                 className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {busy ? '正在跳转飞书…' : '使用飞书扫码登录'}
+                {busy ? '正在跳转飞书…' : !backendOnline ? '等待后端就绪…' : '使用飞书扫码登录'}
               </button>
 
-              {!feishuConfigured && (
+              {!backendOnline && (
+                <div className="mt-4 rounded-md border border-sky-300/60 bg-sky-50 p-3 text-[11px] leading-relaxed text-sky-800">
+                  <div className="mb-1 font-semibold flex items-center gap-1.5">
+                    <span className="inline-block size-2 animate-ping rounded-full bg-sky-500" />
+                    后端服务连接中…
+                  </div>
+                  正在探测后端服务 (http://127.0.0.1:8000)，启动完成后将自动就绪，无需手动刷新。
+                </div>
+              )}
+
+              {backendOnline && !feishuConfigured && (
                 <div className="mt-4 rounded-md border border-amber-300/60 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-800">
                   <div className="mb-1 font-semibold">飞书登录尚未配置</div>
                   在 <code className="font-mono">backend/.env</code> 里填{' '}

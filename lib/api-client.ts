@@ -197,9 +197,22 @@ export async function* llmChatStream(req: LLMChatRequest): AsyncGenerator<SSEEve
 /**
  * 获取可用模型列表（带能力标识）
  */
-export async function llmListModels(): Promise<Array<{ id: string; name: string; capabilities: string[] }>> {
+/**
+ * 获取可用模型列表（带阵营 provider 与真实模态能力）
+ */
+export type LlmModel = {
+  id: string
+  name: string
+  capabilities: string[]        // ["text","image","video"]
+  provider: 'openai' | 'gemini' // 阵营，前端据此分组
+  videoEndpoint: string | null  // "openai" | "gemini-native" | null
+  note: string
+  registered: boolean           // 是否已实测登记（false=保守降级）
+}
+
+export async function llmListModels(): Promise<LlmModel[]> {
   const res = await fetch(`${API_BASE}/api/llm/models`)
-  const body = (await res.json()) as ApiResponse<{ models: Array<{ id: string; name: string; capabilities: string[] }> }>
+  const body = (await res.json()) as ApiResponse<{ models: LlmModel[] }>
   if (!body.ok || !body.data) throw new Error(body.error || '获取模型列表失败')
   return body.data.models
 }
@@ -729,4 +742,263 @@ export async function judgeDryRun(req: JudgeDryRunRequest): Promise<JudgeDryRunR
   if (!body.ok || !body.data) throw new Error(body.error || '评判试跑失败')
   return body.data
 }
+
+
+// ========== 阶段二：评分器版本 / 能力版本 / 实验 ==========
+//
+// 约定：草稿仍存前端内存（useShared）；这里只封装「发布 / 历史 / 回溯 / 实验落库」。
+// 写操作后端要求 eval:write 权限（admin / editor），匿名或 member 会收到 403。
+
+/** 评分器版本记录（列表项，不含 config 大字段）。 */
+export interface ScorerVersionMeta {
+  id: number
+  scorerId: string
+  version: number
+  name: string
+  capabilityId: string
+  capabilityVersion: string
+  promptVersion: string
+  trialPassed: boolean
+  note: string
+  createdBy: string
+  createdAt: string
+}
+
+/** 评分器版本完整快照。 */
+export interface ScorerVersionFull extends ScorerVersionMeta {
+  config: Record<string, any>
+}
+
+/** 发布评分器：把前端草稿固化成不可变版本。trialPassed 必须为 true。 */
+export async function publishScorerVersion(input: {
+  scorerId: string
+  config: Record<string, any>
+  version?: number | null
+  name?: string
+  capabilityId?: string
+  capabilityVersion?: string
+  promptVersion?: string
+  trialPassed: boolean
+  note?: string
+  createdBy?: string
+}): Promise<ScorerVersionFull> {
+  const res = await fetch(`${API_BASE}/api/scorers/${encodeURIComponent(input.scorerId)}/publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...scopeHeaders() },
+    body: JSON.stringify({
+      config: input.config,
+      version: input.version ?? null,
+      name: input.name ?? '',
+      capability_id: input.capabilityId ?? '',
+      capability_version: input.capabilityVersion ?? '',
+      prompt_version: input.promptVersion ?? '',
+      trial_passed: input.trialPassed,
+      note: input.note ?? '',
+      created_by: input.createdBy ?? 'system',
+    }),
+  })
+  const body = (await res.json()) as ApiResponse<ScorerVersionFull>
+  if (!body.ok || !body.data) throw new Error(body.error || '发布评分器失败')
+  return body.data
+}
+
+/** 评分器历史版本（新的在前）。 */
+export async function listScorerVersions(scorerId: string): Promise<ScorerVersionMeta[]> {
+  const res = await fetch(`${API_BASE}/api/scorers/${encodeURIComponent(scorerId)}/versions`, { headers: scopeHeaders() })
+  const body = (await res.json()) as ApiResponse<{ versions: ScorerVersionMeta[] }>
+  if (!body.ok || !body.data) throw new Error(body.error || '获取评分器版本失败')
+  return body.data.versions
+}
+
+/** 取某个版本完整快照。 */
+export async function getScorerVersion(scorerId: string, version: number): Promise<ScorerVersionFull> {
+  const res = await fetch(`${API_BASE}/api/scorers/${encodeURIComponent(scorerId)}/versions/${version}`, { headers: scopeHeaders() })
+  const body = (await res.json()) as ApiResponse<ScorerVersionFull>
+  if (!body.ok || !body.data) throw new Error(body.error || '获取评分器版本详情失败')
+  return body.data
+}
+
+/** 两个版本的字段级差异。 */
+export async function diffScorerVersions(scorerId: string, from: number, to: number): Promise<{
+  from: number
+  to: number
+  identical: boolean
+  changes: Array<{ field: string; label: string; before: any; after: any }>
+  inputs: { added: any[]; removed: any[]; changed: any[] }
+}> {
+  const qs = new URLSearchParams({ from: String(from), to: String(to) })
+  const res = await fetch(`${API_BASE}/api/scorers/${encodeURIComponent(scorerId)}/diff?${qs}`, { headers: scopeHeaders() })
+  const body = (await res.json()) as ApiResponse<any>
+  if (!body.ok || !body.data) throw new Error(body.error || '版本对比失败')
+  return body.data
+}
+
+/** 取回历史版本内容用于派生新草稿（不写库）。 */
+export async function restoreScorerVersion(scorerId: string, version: number): Promise<{
+  config: Record<string, any>
+  draftVersion: number
+  source: Record<string, any>
+}> {
+  const res = await fetch(`${API_BASE}/api/scorers/${encodeURIComponent(scorerId)}/versions/${version}/restore`, {
+    method: 'POST',
+    headers: scopeHeaders(),
+  })
+  const body = (await res.json()) as ApiResponse<any>
+  if (!body.ok || !body.data) throw new Error(body.error || '取回版本失败')
+  return body.data
+}
+
+// ---------- 能力版本 ----------
+
+export interface CapabilityVersionMeta {
+  id: number
+  capabilityId: string
+  version: string
+  name: string
+  executionType: string
+  createdBy: string
+  createdAt: string
+}
+
+export interface CapabilityVersionFull extends CapabilityVersionMeta {
+  config: Record<string, any>
+}
+
+/** 发布能力版本。version 留空后端自动推导 vN.0.0。 */
+export async function publishCapabilityVersion(input: {
+  capabilityId: string
+  config: Record<string, any>
+  version?: string
+  name?: string
+  executionType?: string
+  trialPassed?: boolean
+  createdBy?: string
+}): Promise<CapabilityVersionFull> {
+  const res = await fetch(`${API_BASE}/api/capabilities/${encodeURIComponent(input.capabilityId)}/publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...scopeHeaders() },
+    body: JSON.stringify({
+      config: input.config,
+      version: input.version ?? '',
+      name: input.name ?? '',
+      execution_type: input.executionType ?? '',
+      trial_passed: input.trialPassed ?? false,
+      created_by: input.createdBy ?? 'system',
+    }),
+  })
+  const body = (await res.json()) as ApiResponse<CapabilityVersionFull>
+  if (!body.ok || !body.data) throw new Error(body.error || '发布能力失败')
+  return body.data
+}
+
+/** 能力历史版本。 */
+export async function listCapabilityVersions(capabilityId: string): Promise<CapabilityVersionMeta[]> {
+  const res = await fetch(`${API_BASE}/api/capabilities/${encodeURIComponent(capabilityId)}/versions`, { headers: scopeHeaders() })
+  const body = (await res.json()) as ApiResponse<{ versions: CapabilityVersionMeta[] }>
+  if (!body.ok || !body.data) throw new Error(body.error || '获取能力版本失败')
+  return body.data.versions
+}
+
+/** 取能力最新发布版本（评分器「绑定能力」选择器默认值）。 */
+export async function getLatestCapabilityVersion(capabilityId: string): Promise<CapabilityVersionFull> {
+  const res = await fetch(`${API_BASE}/api/capabilities/${encodeURIComponent(capabilityId)}/versions/latest`, { headers: scopeHeaders() })
+  const body = (await res.json()) as ApiResponse<CapabilityVersionFull>
+  if (!body.ok || !body.data) throw new Error(body.error || '获取能力最新版本失败')
+  return body.data
+}
+
+// ---------- 实验（唯一落库） ----------
+
+export interface ScorerRef {
+  id: string
+  version: number
+}
+
+export interface ExperimentDTO {
+  experimentId: string
+  name: string
+  description: string
+  snapshotId: string
+  fieldDictVersion: string
+  scorerRefs: ScorerRef[]
+  weights: Record<string, number>
+  status: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ExperimentRunDTO {
+  runId: string
+  experimentId: string
+  status: string
+  units: number
+  doneUnits: number
+  errors: number
+  cost: string
+  summary: Record<string, any>
+  detail: any[]
+  startedAt: string
+  finishedAt: string
+}
+
+/** 创建实验。后端会校验 scorerRefs 的版本都存在，缺一个整体拒绝。 */
+export async function createExperiment(input: {
+  name: string
+  scorerRefs: ScorerRef[]
+  snapshotId: string
+  experimentId?: string
+  description?: string
+  fieldDictVersion?: string
+  weights?: Record<string, number>
+  createdBy?: string
+}): Promise<ExperimentDTO> {
+  const res = await fetch(`${API_BASE}/api/experiments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...scopeHeaders() },
+    body: JSON.stringify({
+      name: input.name,
+      scorer_refs: input.scorerRefs,
+      snapshot_id: input.snapshotId,
+      experiment_id: input.experimentId ?? '',
+      description: input.description ?? '',
+      field_dict_version: input.fieldDictVersion ?? '',
+      weights: input.weights ?? {},
+      created_by: input.createdBy ?? 'system',
+    }),
+  })
+  const body = (await res.json()) as ApiResponse<ExperimentDTO>
+  if (!body.ok || !body.data) throw new Error(body.error || '创建实验失败')
+  return body.data
+}
+
+/** 实验列表（当前租户）。 */
+export async function listExperiments(): Promise<ExperimentDTO[]> {
+  const res = await fetch(`${API_BASE}/api/experiments`, { headers: scopeHeaders() })
+  const body = (await res.json()) as ApiResponse<{ experiments: ExperimentDTO[] }>
+  if (!body.ok || !body.data) throw new Error(body.error || '获取实验列表失败')
+  return body.data.experiments
+}
+
+/** 实验详情 + 解析出完整评分器版本快照。 */
+export async function getExperimentResolved(experimentId: string): Promise<ExperimentDTO & { resolvedScorers: any[] }> {
+  const res = await fetch(`${API_BASE}/api/experiments/${encodeURIComponent(experimentId)}/resolved`, { headers: scopeHeaders() })
+  const body = (await res.json()) as ApiResponse<ExperimentDTO & { resolvedScorers: any[] }>
+  if (!body.ok || !body.data) throw new Error(body.error || '获取实验详情失败')
+  return body.data
+}
+
+/** 登记一次实验运行（实验首跑后引用冻结）。 */
+export async function createExperimentRun(experimentId: string, units = 0): Promise<ExperimentRunDTO> {
+  const res = await fetch(`${API_BASE}/api/experiments/${encodeURIComponent(experimentId)}/runs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...scopeHeaders() },
+    body: JSON.stringify({ units }),
+  })
+  const body = (await res.json()) as ApiResponse<ExperimentRunDTO>
+  if (!body.ok || !body.data) throw new Error(body.error || '创建实验运行失败')
+  return body.data
+}
+
+
 

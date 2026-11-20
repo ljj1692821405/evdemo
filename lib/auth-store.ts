@@ -69,24 +69,50 @@ export function consumeLoginState(): { state: string; returnTo: string } {
   return { state, returnTo }
 }
 
+export type AuthState = {
+  user: AuthUser | null
+  feishuConfigured: boolean
+  backendOnline: boolean
+}
+
 export function useAuth() {
   const token = typeof window === 'undefined' ? '' : getSessionToken()
 
-  const { data, mutate, isLoading } = useSWR<{ user: AuthUser | null; feishuConfigured: boolean }>(
+  const { data, mutate, isLoading } = useSWR<AuthState>(
     'auth:me',
     async () => {
-      const status = await fetchAuthStatus().catch(() => ({ feishuConfigured: false, redirectUri: '' }))
-      if (!getSessionToken()) return { user: null, feishuConfigured: status.feishuConfigured }
+      let status: { feishuConfigured: boolean; redirectUri: string }
+      let backendOnline = true
+      try {
+        status = await fetchAuthStatus()
+      } catch {
+        backendOnline = false
+        status = { feishuConfigured: false, redirectUri: '' }
+      }
+
+      if (!backendOnline) {
+        return { user: null, feishuConfigured: false, backendOnline: false }
+      }
+
+      if (!getSessionToken()) {
+        return { user: null, feishuConfigured: status.feishuConfigured, backendOnline: true }
+      }
+
       try {
         const { user } = await fetchMe()
-        return { user, feishuConfigured: status.feishuConfigured }
+        return { user, feishuConfigured: status.feishuConfigured, backendOnline: true }
       } catch {
         // token 失效：清掉本地残留，回到未登录态
         setSessionToken('')
-        return { user: null, feishuConfigured: status.feishuConfigured }
+        return { user: null, feishuConfigured: status.feishuConfigured, backendOnline: true }
       }
     },
-    { revalidateOnFocus: false, revalidateOnReconnect: false },
+    {
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      // 当后端不在线时，每隔 2 秒自动重试一次直到后端上线
+      refreshInterval: (latestData) => (latestData && !latestData.backendOnline ? 2000 : 0),
+    },
   )
 
   const login = useCallback(async (returnTo?: string) => {
@@ -98,13 +124,17 @@ export function useAuth() {
       if (getSessionToken()) await apiLogout()
     } finally {
       setSessionToken('')
-      await mutate({ user: null, feishuConfigured: data?.feishuConfigured ?? false }, { revalidate: false })
+      await mutate(
+        { user: null, feishuConfigured: data?.feishuConfigured ?? false, backendOnline: data?.backendOnline ?? true },
+        { revalidate: false },
+      )
     }
-  }, [mutate, data?.feishuConfigured])
+  }, [mutate, data?.feishuConfigured, data?.backendOnline])
 
   return {
     user: data?.user ?? null,
     feishuConfigured: data?.feishuConfigured ?? false,
+    backendOnline: data?.backendOnline ?? true,
     loading: isLoading,
     isLoggedIn: Boolean(data?.user),
     login,

@@ -41,6 +41,7 @@ import {
   type CapabilityExecutionType,
 } from '@/lib/eval-capability-store'
 import { goldenCases, goldenDatasets } from '@/lib/golden-seed'
+import { CapabilityVersionHistory } from './capability-version-history'
 
 const categoryMap: Record<RegisteredCapability['category'], { label: string; tone: 'primary' | 'pass' | 'neutral' | 'warn' }> = {
   multimodal_gen: { label: '多模态视觉', tone: 'primary' },
@@ -600,6 +601,9 @@ export function CapabilitiesRegistryView() {
                   )}
                 </div>
               </div>
+
+              {/* 能力版本面板（接后端 eval_capability_versions） */}
+              <CapabilityVersionHistory cap={currentCap} />
 
               {/* 核心导航 Tab */}
               <div className="mt-4 flex flex-wrap gap-1 border-b pb-3">

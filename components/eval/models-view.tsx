@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { KeyRound, Send, CheckCircle2, AlertCircle, Loader2, MessageSquare, Image as ImageIcon, X, Upload } from 'lucide-react'
+import { KeyRound, Send, CheckCircle2, AlertCircle, Loader2, MessageSquare, Image as ImageIcon, X, Upload, FileText, Film, Boxes } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -9,7 +9,7 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 
 import { Panel, Tag, Mono, Btn } from './primitives'
-import { llmStatus, llmListModels, llmChatStream } from '@/lib/api-client'
+import { llmStatus, llmListModels, llmChatStream, type LlmModel } from '@/lib/api-client'
 
 type ProbeState = 'idle' | 'loading' | 'ok' | 'fail'
 
@@ -34,7 +34,7 @@ export function ModelsView() {
   const [statusError, setStatusError] = useState<string>('')
 
   // 模型列表
-  const [models, setModels] = useState<Array<{ id: string; name: string; capabilities: string[] }>>([])
+  const [models, setModels] = useState<LlmModel[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [selectedModelCapabilities, setSelectedModelCapabilities] = useState<string[]>([])
 
@@ -217,6 +217,33 @@ export function ModelsView() {
     setStreaming('')
   }
 
+  // 按阵营分组：openai / gemini
+  const grouped = {
+    openai: models.filter((m) => m.provider === 'openai'),
+    gemini: models.filter((m) => m.provider === 'gemini'),
+  }
+
+  // 模态图标渲染
+  const ModalityTags = ({ caps }: { caps: string[] }) => (
+    <span className="flex items-center gap-1">
+      {caps.includes('text') && (
+        <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground" title="文本">
+          <FileText className="size-3" />文
+        </span>
+      )}
+      {caps.includes('image') && (
+        <span className="inline-flex items-center gap-0.5 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700" title="图片">
+          <ImageIcon className="size-3" />图
+        </span>
+      )}
+      {caps.includes('video') && (
+        <span className="inline-flex items-center gap-0.5 rounded bg-purple-100 px-1.5 py-0.5 text-[10px] text-purple-700" title="视频">
+          <Film className="size-3" />视频
+        </span>
+      )}
+    </span>
+  )
+
   return (
     <div className="flex flex-col gap-4 p-6">
       {/* 顶部状态 */}
@@ -262,10 +289,53 @@ export function ModelsView() {
         ) : null}
       </Panel>
 
-      {/* 对话测试 */}
-      <Panel
-        title={<span className="flex items-center gap-2"><MessageSquare className="size-4 text-primary" />对话测试</span>}
-        actions={
+      {/* 注册表 + 对话测试 并排 */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_420px]">
+        {/* 模型注册表 */}
+        <Panel title={<span className="flex items-center gap-2"><Boxes className="size-4 text-primary" />模型注册表<span className="text-xs font-normal text-muted-foreground">({models.length} 个)</span></span>}>
+          <div className="flex flex-col gap-2">
+            {([['openai', 'OpenAI 渠道', 'bg-emerald-500'] , ['gemini', 'Gemini 渠道', 'bg-blue-500']] as const).map(([key, label, dot]) => {
+              const list = grouped[key as 'openai' | 'gemini']
+              return (
+                <details key={key} className="group rounded-md border border-border">
+                  <summary className="flex cursor-pointer select-none items-center justify-between gap-2 px-3 py-2 hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      <span className={`inline-block size-2 rounded-full ${dot}`} />
+                      {label}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Tag>{list.length}</Tag>
+                      <span className="text-xs text-muted-foreground transition-transform group-open:rotate-180">▾</span>
+                    </div>
+                  </summary>
+                  <div className="divide-y divide-border border-t">
+                    {list.map((m) => (
+                      <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                        <Mono className="text-xs text-foreground">{m.id}</Mono>
+                        <div className="flex shrink-0 items-center gap-1">
+                          {m.capabilities.includes('text') && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">text</span>}
+                          {m.capabilities.includes('image') && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-600">image</span>}
+                          {m.capabilities.includes('video') && <span className="rounded bg-purple-50 px-1.5 py-0.5 text-[10px] text-purple-600">video</span>}
+                          {m.capabilities.includes('video') && m.videoEndpoint === 'gemini-native' && (
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">Gemini渠道</span>
+                          )}
+                          {m.capabilities.includes('video') && m.videoEndpoint === 'openai' && (
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">OpenAI渠道</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )
+            })}
+          </div>
+        </Panel>
+
+        {/* 对话测试 */}
+        <Panel
+          title={<span className="flex items-center gap-2"><MessageSquare className="size-4 text-primary" />对话测试</span>}
+          actions={
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">模型：</span>
             <div ref={dropdownRef} className="relative">
@@ -478,7 +548,8 @@ export function ModelsView() {
             </Btn>
           </div>
         </div>
-      </Panel>
+        </Panel>
+      </div>
     </div>
   )
 }

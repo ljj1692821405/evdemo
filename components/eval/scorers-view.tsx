@@ -33,6 +33,7 @@ import { Panel, Tag, Mono, Th, Td, Btn } from './primitives'
 import { PromptEditor, defaultPrompt, referencedVars, judgeModels } from './prompt-editor'
 import { TrialLab } from './trial-lab'
 import { CapabilityImportModal } from './capability-import-modal'
+import { ScorerVersionHistory, configToScorerPatch } from './scorer-version-history'
 import { useCapabilityRegistry } from '@/lib/eval-capability-store'
 
 type Trial = 'idle' | 'running' | 'passed'
@@ -240,6 +241,58 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
   }
 
   const update = (patch: Partial<Scorer>) => setList((l) => l.map((x) => (x.id === s.id ? { ...x, ...patch } : x)))
+
+  // 发布评分器：先把当前草稿固化到后端版本表（不可变、append-only），成功后本地置 published。
+  // 后端不可用时降级为纯前端发布，不阻断个人开发联调。
+  const [publishing, setPublishing] = useState(false)
+  const [publishMsg, setPublishMsg] = useState<string | null>(null)
+  const handlePublish = async () => {
+    if (!s) return
+    setPublishing(true)
+    setPublishMsg(null)
+    try {
+      const { publishScorerVersion } = await import('@/lib/api-client')
+      const config: Record<string, any> = {
+        name: s.name,
+        implType: s.implType,
+        inputFields: s.inputFields,
+        outputs: s.outputs,
+        promptTemplate: s.promptTemplate ?? '',
+        background: s.background ?? '',
+        judgeModel: s.judgeModel ?? '',
+        scriptId: s.scriptId ?? '',
+        evidenceScript: s.evidenceScript ?? '',
+        referenceCapabilityId: s.referenceCapabilityId ?? '',
+      }
+      const published = await publishScorerVersion({
+        scorerId: s.id,
+        config,
+        version: s.version,
+        name: s.name,
+        capabilityId: s.referenceCapabilityId ?? '',
+        promptVersion: s.promptVersion ?? '',
+        trialPassed: true, // 走到这里前端已要求 trial==='passed'
+        createdBy: s.createdBy || s.author || '当前用户',
+      })
+      update({ status: 'published', version: published.version })
+      setPublishMsg(`已发布 v${published.version}（已入库）`)
+    } catch (err: any) {
+      // 后端不可用或版本冲突：降级为本地发布，提示用户
+      update({ status: 'published' })
+      setPublishMsg(`本地已发布（后端未入库：${err?.message || String(err)}）`)
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  // 从历史版本取回：把后端 config 反填为新草稿（版本号用后端给的 draftVersion），进入可编辑态。
+  const handleRestore = (config: Record<string, any>, draftVersion: number) => {
+    update({ ...configToScorerPatch(config), status: 'draft', version: draftVersion })
+    setTrial((m) => ({ ...m, [s.id]: 'idle' }))
+    setPublishMsg(`已取回内容，派生为 v${draftVersion} 草稿，请重新试跑后发布`)
+  }
+
+
 
   // 三者强同步：字段勾选 ➔ 提示词自动插入变量并变蓝高亮 ➔ 取消自动清理
   const toggleInputField = (fieldName: string) => {
@@ -903,15 +956,17 @@ function AgentScorers({ initialImportCapId }: { initialImportCapId?: string }) {
                       </div>
                     ) : null}
                     <div className="ml-auto flex items-center gap-2">
-                      <Btn variant="primary" disabled={t !== 'passed'} onClick={() => update({ status: 'published' })}>
+                      {publishMsg ? <span className="text-xs text-muted-foreground">{publishMsg}</span> : null}
+                      <Btn variant="primary" disabled={t !== 'passed' || publishing} onClick={handlePublish}>
                         <Upload className="size-4" aria-hidden="true" />
-                        发布评分器
+                        {publishing ? '发布中…' : '发布评分器'}
                       </Btn>
                     </div>
                   </>
                 )}
               </div>
             </Panel>
+            <ScorerVersionHistory scorerId={s.id} currentVersion={s.version} onRestore={handleRestore} />
           </div>
         ) : null}
       </div>

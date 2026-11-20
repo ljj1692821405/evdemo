@@ -48,6 +48,7 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
   const [runList, setRunList] = useState<Run[]>(initialRuns)
   const [sel, setSel] = useState(initialId && initialExps.some((e) => e.id === initialId) ? initialId : initialExps[0].id)
   const [creating, setCreating] = useState(Boolean(newFromSnapshot))
+  const [persistMsg, setPersistMsg] = useState<string | null>(null)
   const [draft, setDraft] = useState({ name: '', snapshotId: newFromSnapshot ?? snapshots[0].id, scorerIds: [scorers[0].id] as string[] })
 
   // Runner 实时调度抽屉状态
@@ -140,7 +141,7 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
     }, 3200)
   }
 
-  const create = () => {
+  const create = async () => {
     const id = `exp_0${32 + exps.length - initialExps.length}`
     const outputs = draft.scorerIds.flatMap((sid) => scorers.find((s) => s.id === sid)!.outputs)
     const weights = Object.fromEntries(outputs.map((o) => [o, Number((1 / outputs.length).toFixed(2))]))
@@ -154,7 +155,64 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
     setSel(id)
     setCreating(false)
     setDraft((d) => ({ ...d, name: '' }))
+
+    // 后端持久化：把实验固化到 eval_experiments（唯一落库）。
+    // 后端会用 resolve_refs 校验所有评分器版本存在，缺一个整体拒绝。
+    // 评分器引用版本取各评分器当前版本号（前端 scorers 的 version 字段）。
+    setPersistMsg(null)
+    try {
+      const { createExperiment } = await import('@/lib/api-client')
+      const scorerRefs = draft.scorerIds.map((sid) => {
+        const sc = scorers.find((s) => s.id === sid)
+        return { id: sid, version: sc?.version ?? 1 }
+      })
+      await createExperiment({
+        experimentId: id,
+        name: finalName,
+        scorerRefs,
+        snapshotId: draft.snapshotId,
+        fieldDictVersion,
+        weights,
+        createdBy: '当前用户',
+      })
+      setPersistMsg(`实验「${finalName}」已创建并入库（${id}）`)
+    } catch (err: any) {
+      setPersistMsg(`本地已创建（后端未入库：${err?.message || String(err)}）`)
+    }
   }
+
+  // 加载后端已入库实验：映射成前端 Experiment 形状后并入列表（后端在前，mock 去重保留演示数据）。
+  // 后端不可用时静默忽略，列表退回纯 mock，不阻断。
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { listExperiments } = await import('@/lib/api-client')
+        const remote = await listExperiments()
+        if (cancelled || remote.length === 0) return
+        const mapped: Experiment[] = remote.map((r) => ({
+          id: r.experimentId,
+          name: r.name,
+          snapshotId: r.snapshotId,
+          scorerIds: (r.scorerRefs || []).map((ref) => ref.id),
+          weights: r.weights || {},
+          createdBy: r.createdBy || '—',
+          createdAt: (r.createdAt || '').replace('T', ' ').slice(0, 16) || '—',
+          fieldDictVersion: r.fieldDictVersion || '',
+        }))
+        setExps((prev) => {
+          const remoteIds = new Set(mapped.map((m) => m.id))
+          const keptMock = prev.filter((e) => !remoteIds.has(e.id))
+          return [...mapped, ...keptMock]
+        })
+      } catch {
+        // 后端未就绪：保持 mock 列表
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div className="grid grid-cols-1 gap-4 p-6 xl:grid-cols-[320px_1fr]">
@@ -287,7 +345,8 @@ export function ExperimentsView({ initialId, newFromSnapshot }: { initialId?: st
                 })}
               </div>
             </fieldset>
-            <div className="flex items-center justify-end border-t pt-4">
+            <div className="flex items-center justify-between gap-3 border-t pt-4">
+              {persistMsg ? <span className="text-xs text-muted-foreground">{persistMsg}</span> : <span />}
               <Btn variant="primary" disabled={!draft.scorerIds.length} onClick={create}>创建</Btn>
             </div>
           </div>
