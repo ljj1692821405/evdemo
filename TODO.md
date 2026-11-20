@@ -147,6 +147,85 @@
 
 ---
 
+## Phase 4: 多模态模型能力与多模态裁判（2026-11-20 新增）
+
+> 背景：平台背后接 NewAPI 网关（jzapi.duanju.com），一把 key 挂 42 个模型，
+> 多模态能力千差万别。此前 `llm_service._detect_capabilities()` 用旧模型名关键字瞎猜，
+> 标注基本全错。本阶段目标：让底层模型能力「注册对」，并把多模态裁判能力打通。
+
+### ✅ 已完成：真实验证（验证脚本在 `test_data/仿真接口测试/制片模式Agent/`）
+
+- [x] **产出权威能力登记表** `模型多模态能力与上限说明.md` + `03_probe_model_capabilities.py`
+  实测脚本（可复跑）+ `outputs_capability/matrix.json`（33/40 模型机测结果）✅
+- [x] **证实 Gemini 双端点差异**（`verify_gemini_video.py`）✅
+  - 门 A（OpenAI 兼容 `/v1/chat/completions`）：视频被静默丢弃，prompt_tokens 仅 15~24
+  - 门 B（原生 `:generateContent` + inline_data）：视频真进模型，prompt_tokens 684
+  - 结论：**gemini 看视频必须走原生门 B，兼容门 A 一定丢视频**
+- [x] **攻克 thinking 模型解析坑** ✅
+  gemini-3.x 响应 `candidates[].content.parts[]` 里混着 `thought:true`（思考）和正式答案 part，
+  只取第一个 part 会拿到思考碎片，**必须过滤 thought、拼接正式答案 part**
+- [x] **真实视频理解验证**（`ask_gemini_video.py`）✅
+  - 江南古建筑视频 → gemini-3.8-flash 准确识别「江南古镇、青石板、雨雾、明清建筑」
+  - 情绪人物视频 → gemini-2.5-pro 精准识别「东亚女性、服装造型、从平静到崩溃哭泣、镜头推近、背景钢琴乐」
+  - 暴露工程问题：同模型会偶发 180s 超时（flash），**换同族模型（2.5-pro）可救活** → 工程化必须有重试+降级
+- [x] **多模态裁判验证**（`judge_video_generation.py`）✅ —— 平台核心能力
+  - 场景：参考图 + 提示词 + 生成视频 → 裁判模型三模态同时输入打分
+  - 结果：gemini-2.5-pro 对「图生视频」从角色一致性/提示词符合度/画面质量三维度打分，
+    精准判定角色造型一致（发型/服装/脸型），prompt_tokens=3806（图+文+视频全进）
+  - 暴露工程问题：裁判输出是 ` ```json...``` ` markdown 围栏包裹，**入库前必须先剥围栏再 json.loads**
+
+### ⬜ 待排期（P0 → P2）
+
+#### P0-1：底层模型能力「注册对」+ 可用性验证
+- [ ] 新建 `model_registry`（能力表）：42 个模型逐个录入真实实测能力
+      `{ text, image, video, adapter: "openai"|"gemini-native", video_endpoint, note }`
+- [ ] 重写 `llm_service._detect_capabilities()`：从「关键字瞎猜」改「查表」，未命中保守降级为仅 text
+- [ ] **验证每个模态真能用**（不只是标对）：text/image/video 三条路各挑代表模型跑通
+- [ ] 前台模型注册表（`models-view.tsx`）展示每个模型的真实模态能力 + 「视频需原生门」标注
+
+#### P0-2：统一适配器架构（20+ 模型统一处理）
+> ⚠️ 两头都要翻译：不只是**响应结构**各家不同，**请求传参方式**（图片/视频往哪个字段放、
+> base64 带不带 `data:` 前缀、mime 怎么传、鉴权头）更是家家不同。适配器必须「入参翻译 + 出参翻译」双向负责。
+>
+> 真实传参差异（已核对）：
+> - **OpenAI 族**（gpt/qwen/doubao/deepseek/glm/grok）：媒体在 `messages[].content[]`，
+>   图 `{type:image_url, image_url:{url:"data:image/..;base64,.."}}`、视频 `{type:video_url,...}`，
+>   base64 带 `data:` 前缀，头 `Authorization: Bearer`
+> - **Gemini 原生门**：媒体在 `contents[].parts[]`，图/视频统一 `{inline_data:{mime_type, data}}`，
+>   base64 **裸串无前缀**、mime 单独字段，头 `x-goog-api-key`
+> - **Claude 原生门**（可选）：`{type:image, source:{type:base64, media_type, data}}`，又是另一套
+>
+> 解法：定义平台统一中间格式 `UnifiedMessage{role, parts:[{kind:text|image|video, mime, data}]}`，
+> 上层只写这一种；每个适配器负责把它翻译成各家请求格式、再把各家响应翻译回统一回答。
+> 今天验证过的 `gemini_parts()`（入参翻译）+ 过滤 thought（出参翻译）就是雏形，直接搬。
+
+- [ ] 定义统一中间格式 `UnifiedMessage` + `UnifiedReply{content, tokens, model}`
+- [ ] `adapters/openai_adapter.py`：build_request（image_url/video_url + data: 前缀 + Bearer）+ parse_response（`choices[].message.content`），覆盖 gpt/qwen/doubao/deepseek/glm/grok 一整族
+- [ ] `adapters/gemini_adapter.py`：build_request（inline_data + 裸 base64 + x-goog-api-key）+ parse_response（`candidates[].content.parts[]` + 过滤 thought），搬今天验证过的代码
+- [ ] 统一入口 `llm_service.chat()`：查表路由 → 对应 adapter → **重试 + 超时降级链** → 统一返回 `UnifiedReply`
+- [ ] 统一响应清洗：剥 markdown-json 围栏
+
+#### P1：⚠️ 单次输入上限说明文档（影响文生图/图生视频/图文生视频入参限制）
+> 这是独立的「上限登记表」，不同模型不同模态的单次输入上限差异巨大，上游 case 设计/入参校验都要依赖。
+> 注：裁判输入超长的工程处理（如 skill 前后 1w→2w 字做 diff）由开发人员负责，此处仅**汇报上限数值**。
+- [ ] **文本上限**：各模型单次文本输入 token 上限（Claude 1M / Gemini 1M / GPT-6.1 1.05M / Grok 500K / GLM 1M…）
+      + 超限报错特征（400 `prompt is too long` / `maximum context length` / `Range of input length`）
+- [ ] **图片上限**：单图体积（OpenAI 512MB / Claude 5MB / Grok 20MiB）、分辨率、每请求最大张数、格式、最小尺寸
+- [ ] **视频上限**：单文件体积（Gemini inline <100MB，base64 实测建议 ≤10MB）、时长（Gemini 低分辨率最长 3h）、
+      帧率（Gemini 1FPS / Qwen 0.1~10）、格式（统一 mp4 H.264）、传参方式（统一 base64 data URL）
+- [ ] 产出 `多模态输入上限-平台校验表.md`（供文生图/图生视频/图文生视频 case 设计与入参前置校验引用）
+      —— `03_probe_model_capabilities.py` 的 `image-limits` / `video-limits` / `text-limits` 子命令可补齐数值
+
+#### P2：后续链路问题（待补充 —— 用户提示："你补我忘了"）
+- [ ] 多模态素材如何进入评测链路：参考图/视频走 OSS 还是 base64 入库？快照 items 怎么存多模态引用？
+- [ ] 裁判服务 `judge_service` 支持多模态输入：当前只吃文本，需支持把 image/video 一起喂给裁判
+- [ ] 评分器/维度声明「需要多模态裁判」：评分器配置里标记该维度要喂哪些模态素材
+- [ ] 多模态裁判结果入库：复用 `judge_results`，evidence 里存三模态打分明细
+- [ ] 成本与超时治理：视频裁判单次 3000~4000 token + 20~40s，批量跑的并发/降级/成本控制
+
+---
+
+
 ## 进度跟踪
 
 | 功能块 | 完成度 | 最后更新 |
@@ -168,6 +247,11 @@
 | 前端任务提交（接真实接口） | 0% | - |
 | 前端结果展示（接真实接口） | 0% | - |
 | CI/CD | 0% | - |
+| **Phase 4: 多模态能力验证（脚本实测）** | **100%** | **2026-11-20** |
+| Phase 4: 模型能力注册表（注册对+查表） | 0% | - |
+| Phase 4: 统一适配器架构（openai/gemini） | 0% | - |
+| Phase 4: 多模态输入上限文档 | 0% | - |
+| Phase 4: 多模态裁判工程化 | 0% | - |
 
 ---
 

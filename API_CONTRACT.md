@@ -235,3 +235,109 @@ python -c "from app.services.task_execution import task_executor_service as t; p
 # 3. 真实打接口
 python -c "from fastapi.testclient import TestClient; from app.main import app; import json; print(json.dumps(TestClient(app).get('/api/tasks').json(), ensure_ascii=False)[:300])"
 ```
+
+---
+
+## 阶段二：能力版本 / 评分器版本 / 实验（2026-11-20 新增）
+
+> 设计原则：**能力草稿、评分器草稿只活在前端内存，不落库**；
+> 只有「发布」把版本固化（append-only，不可覆盖），「实验」是唯一持久化的评测对象。
+> 写操作权限点统一为 `eval:write`（admin / editor 有，member / viewer 无）。
+
+### 评分器版本 `/api/scorers`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/scorers/{scorer_id}/publish` | 发布版本（需 `eval:write`） |
+| GET | `/api/scorers/{scorer_id}/versions` | 历史列表（倒序，不含 config） |
+| GET | `/api/scorers/{scorer_id}/versions/latest` | 最新版本（升版派生用） |
+| GET | `/api/scorers/{scorer_id}/versions/{version}` | 指定版本完整快照 |
+| GET | `/api/scorers/{scorer_id}/diff?from=1&to=2` | 两版字段级差异 |
+| POST | `/api/scorers/{scorer_id}/versions/{version}/restore` | 取回旧版内容派生新草稿（不写库） |
+
+**POST publish 请求体**
+```json
+{
+  "config": { "name": "...", "implType": "llm_judge",
+              "capabilityRef": {"id": "cap_x", "version": "v3.0.0"},
+              "inputs": [{"name": "待评回复", "field": "agent_reply", "modality": "text"}],
+              "promptTemplate": "...", "judgeModel": "gpt-4o-mini", "outputs": ["..."] },
+  "version": null,            // 留空自动取 max+1
+  "trialPassed": true,        // 必须 true，否则 400 TRIAL_REQUIRED
+  "note": "改了什么",
+  "createdBy": "张三"
+}
+```
+- `version` 为整数自增。
+- 重复发布同版本 → `409 VERSION_IMMUTABLE`（历史不可覆盖）。
+- `trialPassed=false` → `400 TRIAL_REQUIRED`（服务端门禁，不依赖前端按钮）。
+
+**diff 响应 `data`**
+```json
+{ "from":1, "to":2, "identical":false,
+  "changes":[{"field":"inputs","label":"入参","before":{...},"after":{...}}, ...],
+  "inputs":{ "added":[{"name":"参考要点","field":"ground_truth","modality":"text"}],
+             "removed":[], "changed":[] } }
+```
+
+**restore 响应 `data`**：`{ config, draftVersion, source, hint }`——前端拿 `config` 当新草稿打开，`draftVersion = max+1`。
+
+### 能力版本 `/api/capabilities`
+
+结构同构，差异：版本号是**语义化字符串**（`v3.0.0`），发布**不强制** `trialPassed`。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/capabilities/{capability_id}/publish` | 发布；`version` 留空自动推导 `v{major+1}.0.0` |
+| GET | `/api/capabilities/{capability_id}/versions` | 历史列表 |
+| GET | `/api/capabilities/{capability_id}/versions/latest` | 最新版本 |
+| GET | `/api/capabilities/{capability_id}/versions/{version}` | 指定版本 |
+| GET | `/api/capabilities/{capability_id}/diff?from=v1.0.0&to=v2.0.0` | 差异；`breaking=true` 表示执行入口/输出契约变了 |
+| POST | `/api/capabilities/{capability_id}/versions/{version}/restore` | 取回旧版（不写库） |
+
+### 实验 `/api/experiments`（唯一落库）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/experiments` | 创建；校验所有 `scorerRefs` 版本存在 |
+| GET | `/api/experiments` | 列表（当前租户） |
+| GET | `/api/experiments/{experiment_id}` | 详情 |
+| GET | `/api/experiments/{experiment_id}/resolved` | 详情 + 解析出完整评分器版本快照 |
+| DELETE | `/api/experiments/{experiment_id}` | 删除（连带运行记录） |
+| POST | `/api/experiments/{experiment_id}/runs` | 登记一次运行；实验首跑后状态 `draft→running` |
+| GET | `/api/experiments/{experiment_id}/runs` | 运行列表 |
+| GET | `/api/experiments/runs/{run_id}` | 单次运行详情（含结果） |
+| PUT | `/api/experiments/runs/{run_id}` | 回写运行进度/结果（供运行器） |
+
+**POST 创建实验请求体**
+```json
+{
+  "name": "W2 定向修改评测",
+  "scorerRefs": [{"id": "sc_x", "version": 1}],   // 必须是已发布版本
+  "snapshotId": "snap_xxx",                        // 必填，否则 400
+  "fieldDictVersion": "fd_v1",
+  "weights": {"answer_quality": 1.0}
+}
+```
+- 任一 `scorerRefs` 版本不存在 → `400 SCORER_VERSION_MISSING`（含 `missing` 列表）。
+- 缺 `snapshotId` → 400（结果无法复现）。
+- 实验创建时把 `(id, version)` 写死，之后评分器升版**不影响**该实验 → 结果可复现。
+
+**run 结果回写（PUT）字段**：`status / doneUnits / errors / cost / summary / detail / finished`。
+`finished=true` 时写入 `finishedAt`。`summary` 建议 `{pass, total, rate}`。
+
+### 新增错误码
+
+| code | HTTP | 含义 |
+|---|---|---|
+| `TRIAL_REQUIRED` | 400 | 评分器未试跑通过，不许发布 |
+| `VERSION_IMMUTABLE` | 409 | 版本号已存在，不可覆盖 |
+| `SCORER_VERSION_MISSING` | 400 | 实验引用的评分器版本不存在 |
+| `EXPERIMENT_EXISTS` | 409 | 实验 ID 重复 |
+| `EXPERIMENT_LOCKED` | 409 | 实验已运行，不能改引用 |
+
+### 对应数据库表（`init_db.py`）
+
+`eval_capability_versions` / `eval_scorer_versions`（append-only，`UNIQUE(xxx_id, version)`）
+/ `eval_experiments` / `eval_experiment_runs`（外键 CASCADE）。
+
