@@ -77,7 +77,11 @@ async def chat(req: ChatRequest) -> dict:
 async def chat_stream(req: ChatRequest) -> StreamingResponse:
     """流式对话，返回自定义 SSE 格式。"""
     messages = [m.model_dump() for m in req.messages]
-    
+
+    # 流式链路前先过能力表：视频走不了 OpenAI 兼容门，这里直接 400，
+    # 而不是「正常返回但模型根本没看到视频」。
+    llm_service.validate_stream_request(messages, req.model)
+
     async def event_generator():
         async for event in llm_service.chat_stream(
             messages, model=req.model, temperature=req.temperature

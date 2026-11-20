@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,17 +14,29 @@ from .config import server_settings
 from .middleware.tenant_middleware import TenantMiddleware
 from .responses import ServiceError, fail
 from .routers import llm, oss, pg, system
+from .services import llm_service
 from .routers import (
     auth_router,
+    capability_router,
     dataset_router,
+    experiment_router,
     flow_config_router,
     judge_router,
     result_router,
+    scorer_router,
+    snapshot_router,
     task_router,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 log = logging.getLogger("eval.backend")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """应用生命周期：关闭时释放 LLM 的 httpx 连接池与信号量。"""
+    yield
+    await llm_service.close_client()
 
 
 def create_app() -> FastAPI:
@@ -34,6 +47,7 @@ def create_app() -> FastAPI:
         description="前后端分离后端服务：LLM 代理 / PostgreSQL / OSS",
         docs_url="/docs",
         openapi_url="/openapi.json",
+        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -71,6 +85,10 @@ def create_app() -> FastAPI:
     app.include_router(result_router.router)
     app.include_router(dataset_router.router)
     app.include_router(judge_router.router)
+    app.include_router(scorer_router.router)
+    app.include_router(capability_router.router)
+    app.include_router(experiment_router.router)
+    app.include_router(snapshot_router.router)
 
     return app
 

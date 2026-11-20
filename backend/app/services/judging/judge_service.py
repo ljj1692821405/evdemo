@@ -98,27 +98,28 @@ def build_messages_from_inputs(
     inputs 每项：{"name": 展示名, "modality": "text"|"image"|"video", "value": 值}
     - text  入参 → user content 里一段带小标题的文本块
     - image 入参 → user content 里一个 image_url 块（value 为 URL 或 data URL）
+    - video 入参 → user content 里一个 video_url 块（同上）
 
     与旧的「固定三槽」相比，这里不预设入参个数与命名，
-    意图识别(1 槽)、安全性(2 槽)、忠实度(5 槽)、图文混合都走同一条路径。
+    意图识别(1 槽)、安全性(2 槽)、忠实度(5 槽)、图文/视频混合都走同一条路径。
     """
     rubric_text = (rubric or DEFAULT_RUBRIC).strip()
 
-    # user content 组装成多模态数组（纯文本时也用数组，call_json 透传给上游，OpenAI 兼容）
+    # user content 组装成多模态数组（纯文本时压回字符串，含图/视频才用数组）
     parts: list[dict[str, Any]] = []
-    has_image = False
+    has_media = False
     for item in inputs or []:
         name = str(item.get("name") or "入参")
         modality = (item.get("modality") or "text").lower()
         value = item.get("value")
 
-        if modality == "image":
+        if modality in ("image", "video"):
             url = _coerce_text(value)
             if not url:
                 continue
             parts.append({"type": "text", "text": f"【{name}】"})
-            parts.append({"type": "image_url", "image_url": {"url": url}})
-            has_image = True
+            parts.append({"type": f"{modality}_url", f"{modality}_url": {"url": url}})
+            has_media = True
         else:
             text = _coerce_text(value) or "（未提供）"
             parts.append({"type": "text", "text": f"【{name}】\n{text}"})
@@ -134,8 +135,8 @@ def build_messages_from_inputs(
         }
     )
 
-    # 纯文本场景把数组压回字符串，保持与旧链路/旧日志一致；含图才用多模态数组
-    if has_image:
+    # 纯文本场景把数组压回字符串，保持与旧链路/旧日志一致；含图/视频才用多模态数组
+    if has_media:
         user_content: Any = parts
     else:
         user_content = "\n\n".join(p["text"] for p in parts)

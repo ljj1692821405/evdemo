@@ -19,40 +19,63 @@ import httpx
 from pydantic import BaseModel, Field, field_validator
 
 from ..config import llm_settings
+import base64
+from .model_capabilities import get_capability
 from ..responses import ServiceError
 
 log = logging.getLogger(__name__)
 
 # ---- 全局客户端与并发限制 ----
+# httpx.AsyncClient 的连接池与 asyncio.Semaphore 都会绑定到「创建它们的事件循环」：
+# 循环一关，再拿去用就报 RuntimeError: Event loop is closed。
+# uvicorn 正常跑只有一个循环，但测试（TestClient 每个实例一个循环）、
+# 脚本里多次 asyncio.run、--reload 重启都会换循环，所以这里必须记住归属循环。
 _client: httpx.AsyncClient | None = None
+_client_loop: asyncio.AbstractEventLoop | None = None
 _semaphore: asyncio.Semaphore | None = None
+_semaphore_loop: asyncio.AbstractEventLoop | None = None
 
 
 async def _get_client() -> httpx.AsyncClient:
-    """全进程共用的 httpx 客户端，复用连接池。"""
-    global _client
-    if _client is None:
+    """取得当前事件循环专属的 httpx 客户端，复用连接池。
+
+    归属循环变了就重建；旧客户端所属的循环多半已关闭，不能 await aclose()，
+    直接丢引用（其 socket 随循环一起没了）。
+    """
+    global _client, _client_loop
+    loop = asyncio.get_running_loop()
+    if _client is None or _client.is_closed or _client_loop is not loop:
         _client = httpx.AsyncClient(
             timeout=120.0,
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         )
+        _client_loop = loop
     return _client
 
 
 async def _get_semaphore() -> asyncio.Semaphore:
-    """并发限制信号量：同时最多 3 个请求。"""
-    global _semaphore
-    if _semaphore is None:
+    """取得当前事件循环专属的并发信号量：同时最多 3 个请求。"""
+    global _semaphore, _semaphore_loop
+    loop = asyncio.get_running_loop()
+    if _semaphore is None or _semaphore_loop is not loop:
         _semaphore = asyncio.Semaphore(3)
+        _semaphore_loop = loop
     return _semaphore
 
 
 async def close_client() -> None:
-    """服务关闭时调用，释放客户端。"""
-    global _client
-    if _client:
+    """服务关闭时调用，释放客户端与信号量。
+
+    只关闭当前循环持有的那两个；属于其他（多半已关闭的）循环的对象直接丢引用。
+    """
+    global _client, _client_loop, _semaphore, _semaphore_loop
+    loop = asyncio.get_running_loop()
+    if _client is not None and not _client.is_closed and _client_loop is loop:
         await _client.aclose()
-        _client = None
+    _client = None
+    _client_loop = None
+    _semaphore = None
+    _semaphore_loop = None
 
 
 def _headers() -> dict[str, str]:
@@ -124,55 +147,34 @@ class JudgeScore(BaseModel):
 
 
 async def call_json(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     model: str | None = None,
     temperature: float = 0.2,
     response_schema: type[BaseModel] | None = None,
+    max_tokens: int = 4096,
 ) -> dict[str, Any]:
     """
     调用 LLM 并解析为结构化 JSON。
+
+    与 chat() 共用同一条三层路由（detect → validate → route），
+    区别只在收尾：这里强制 json_object，并把正文解析成 dict / pydantic。
     如果响应包含 ```json 代码块，自动剥掉。
-    如果解析失败，尝试重新要求纠正（目前先直接失败，可后续改成重试）。
     """
-    _ensure_ready()
-    cfg = llm_settings()
-    payload: dict[str, Any] = {
-        "model": model or cfg.model,
-        "messages": messages,
-        "temperature": temperature,
-        "stream": False,
-        "response_format": {"type": "json_object"},
-    }
+    result = await _dispatch(
+        messages,
+        model=model,
+        temperature=temperature,
+        json_mode=True,
+        max_tokens=max_tokens,
+    )
 
-    client = await _get_client()
-    sem = await _get_semaphore()
-
-    started = time.perf_counter()
-
-    async def _call():
-        async with sem:
-            resp = await client.post(
-                f"{cfg.base_url}/chat/completions", headers=_headers(), json=payload
-            )
-            if resp.status_code >= 400:
-                raise ServiceError(_unwrap_error(resp.status_code, resp.text), resp.status_code)
-            return resp.json()
-
-    try:
-        data = await _retry_with_backoff(_call, max_retries=cfg.max_retries)
-    except ServiceError:
-        raise
-    except Exception as exc:
-        raise ServiceError(f"连接上游 LLM 失败：{exc}", 502) from exc
-
-    choices = data.get("choices") or [{}]
-    raw_content = (choices[0].get("message") or {}).get("content", "")
+    raw_content = result.get("content") or ""
 
     # 剥掉代码块包裹
-    content = raw_content
+    content = raw_content.strip()
     if content.startswith("```json"):
         content = content[7:]
-    if content.startswith("```"):
+    elif content.startswith("```"):
         content = content[3:]
     if content.endswith("```"):
         content = content[:-3]
@@ -194,41 +196,163 @@ async def call_json(
             parsed = validated.model_dump(by_alias=True, exclude_unset=False)
         except Exception as exc:
             raise ServiceError(
-                f"LLM 返回的 JSON 不符合契约：{exc}。收到：{json.dumps(parsed)[:200]}",
+                f"LLM 返回的 JSON 不符合契约：{exc}。收到：{json.dumps(parsed, ensure_ascii=False)[:200]}",
                 502,
             ) from exc
 
     return {
-        "model": data.get("model") or payload["model"],
+        "model": result.get("model"),
         "content": content,
         "parsed": parsed,
-        "usage": data.get("usage"),
-        "latency_ms": int((time.perf_counter() - started) * 1000),
+        "usage": result.get("usage"),
+        "latency_ms": int(result.get("latency_ms") or 0),
+        "adapter_used": result.get("adapter_used"),
     }
 
 
-async def chat(
-    messages: list[dict[str, str]],
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 多模态三层处理：detect → validate → route
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _detect_modalities(messages: list) -> set:
+    """扫描 messages，返回本次请求实际用到的模态集合。"""
+    mods: set = {"text"}
+    for msg in messages:
+        content = msg.get("content", "")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            t = part.get("type", "")
+            if t == "image_url":
+                mods.add("image")
+            elif t == "video_url":
+                mods.add("video")
+    return mods
+
+
+def _validate_capability(model_id: str, required: set) -> dict:
+    """查能力表；若模型不支持所需模态，抛 ServiceError(400)。"""
+    cap = get_capability(model_id)
+    unsupported = required - set(cap["modalities"])
+    if unsupported:
+        raise ServiceError(
+            f"模型 {model_id} 不支持 {sorted(unsupported)} 输入"
+            f"（该模型支持：{sorted(cap['modalities'])}）",
+            400,
+        )
+    return cap
+
+
+def _build_openai_payload(model_id, messages, temperature, json_mode, max_tokens):
+    payload = {"model": model_id, "messages": messages,
+               "temperature": temperature, "max_tokens": max_tokens, "stream": False}
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    return payload
+
+
+def _build_gemini_payload(model_id, messages, temperature, max_tokens):
+    """OpenAI messages → Gemini contents/parts + inline_data。"""
+    def to_parts(content):
+        if isinstance(content, str):
+            return [{"text": content}]
+        parts = []
+        for p in content:
+            t = p.get("type", "")
+            if t == "text":
+                parts.append({"text": p["text"]})
+            elif t in ("image_url", "video_url"):
+                url = p[t]["url"]
+                if url.startswith("data:"):
+                    header, data = url.split(",", 1)
+                    mime = header.split(":")[1].split(";")[0]
+                    parts.append({"inline_data": {"mime_type": mime, "data": data}})
+                else:
+                    mime = "video/mp4" if t == "video_url" else "image/jpeg"
+                    parts.append({"file_data": {"mime_type": mime, "file_uri": url}})
+        return parts
+
+    contents = []
+    for msg in messages:
+        role = "user" if msg.get("role") == "user" else "model"
+        contents.append({"role": role, "parts": to_parts(msg.get("content", ""))})
+    return {"contents": contents,
+            "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature}}
+
+
+def _parse_gemini_response(j: dict) -> tuple:
+    """解析 Gemini 原生响应，过滤 thought part。"""
+    cand0 = (j.get("candidates") or [{}])[0]
+    parts = (cand0.get("content") or {}).get("parts") or []
+    texts = [p.get("text", "") for p in parts if p.get("text") and not p.get("thought")]
+    text = "".join(texts).strip()
+    meta = j.get("usageMetadata") or {}
+    usage = {"prompt_tokens": meta.get("promptTokenCount"),
+             "completion_tokens": meta.get("candidatesTokenCount"),
+             "total_tokens": meta.get("totalTokenCount")}
+    return text, usage
+
+async def _dispatch(
+    messages: list[Any],
     model: str | None = None,
     temperature: float = 0.2,
     json_mode: bool = False,
+    max_tokens: int = 4096,
 ) -> dict[str, Any]:
-    """非流式对话，返回 content / usage / 耗时。"""
+    """
+    三层路由主干：detect → validate → route。
+
+    chat() 与 call_json() 共用这一条路径，保证「改模型服务只改一处」：
+    对话测试 UI、评分器调试台、批量评判、实验跑分自动获得同一套
+    模态检测、能力表校验与适配器选择。
+
+    返回统一结构：{model, content, usage, latency_ms, adapter_used}
+    """
     _ensure_ready()
     cfg = llm_settings()
-    payload: dict[str, Any] = {
-        "model": model or cfg.model,
-        "messages": messages,
-        "temperature": temperature,
-        "stream": False,
-    }
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
+    model_id = model or cfg.model
 
-    client = await _get_client()
-    sem = await _get_semaphore()
+    # ① 检测本次请求用到的模态
+    required = _detect_modalities(messages)
+
+    # ② 校验能力表（不支持则抛 400 ServiceError）
+    cap = _validate_capability(model_id, required)
+    video_ep = cap["video_endpoint"]
 
     started = time.perf_counter()
+
+    # ③ 路由：Gemini 原生门 vs OpenAI 兼容门
+    use_gemini_native = (
+        cap["provider"] == "gemini"
+        and "video" in required
+        and video_ep == "gemini-native"
+    )
+
+    if use_gemini_native:
+        root = cfg.base_url.rstrip("/")
+        if root.endswith("/v1"):
+            root = root[:-3]
+        url = f"{root}/v1beta/models/{model_id}:generateContent"
+        hdr = {"x-goog-api-key": cfg.api_key, "Content-Type": "application/json"}
+        payload = _build_gemini_payload(model_id, messages, temperature, max_tokens)
+        async with httpx.AsyncClient(timeout=cfg.timeout) as c:
+            try:
+                resp = await c.post(url, headers=hdr, json=payload)
+            except httpx.HTTPError as exc:
+                raise ServiceError(f"连接 Gemini 原生端点失败：{exc}", 502) from exc
+        if resp.status_code >= 400:
+            raise ServiceError(_unwrap_error(resp.status_code, resp.text), resp.status_code)
+        content, usage = _parse_gemini_response(resp.json())
+        return {"model": model_id, "content": content, "usage": usage,
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+                "adapter_used": "gemini-native"}
+
+    # OpenAI 兼容门
+    payload = _build_openai_payload(model_id, messages, temperature, json_mode, max_tokens)
+    client = await _get_client()
+    sem = await _get_semaphore()
 
     async def _call():
         async with sem:
@@ -247,52 +371,46 @@ async def chat(
         raise ServiceError(f"连接上游 LLM 失败：{exc}", 502) from exc
 
     choices = data.get("choices") or [{}]
-    return {
-        "model": data.get("model") or payload["model"],
-        "content": (choices[0].get("message") or {}).get("content", ""),
-        "usage": data.get("usage"),
-        "latency_ms": int((time.perf_counter() - started) * 1000),
-    }
+    return {"model": data.get("model") or model_id,
+            "content": (choices[0].get("message") or {}).get("content", ""),
+            "usage": data.get("usage"),
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "adapter_used": "openai"}
 
 
 async def chat(
-    messages: list[dict[str, str]],
+    messages: list,
     model: str | None = None,
     temperature: float = 0.2,
     json_mode: bool = False,
+    max_tokens: int = 4096,
 ) -> dict[str, Any]:
-    """非流式对话，返回 content / usage / 耗时。"""
-    _ensure_ready()
-    cfg = llm_settings()
-    payload: dict[str, Any] = {
-        "model": model or cfg.model,
-        "messages": messages,
-        "temperature": temperature,
-        "stream": False,
-    }
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
+    """非流式对话，统一入口。三层路由全部委托 _dispatch，本函数只做转发。"""
+    return await _dispatch(
+        messages,
+        model=model,
+        temperature=temperature,
+        json_mode=json_mode,
+        max_tokens=max_tokens,
+    )
 
-    started = time.perf_counter()
-    try:
-        async with httpx.AsyncClient(timeout=cfg.timeout) as client:
-            resp = await client.post(
-                f"{cfg.base_url}/chat/completions", headers=_headers(), json=payload
-            )
-    except httpx.HTTPError as exc:
-        raise ServiceError(f"连接上游 LLM 失败：{exc}", 502) from exc
 
-    if resp.status_code >= 400:
-        raise ServiceError(_unwrap_error(resp.status_code, resp.text), resp.status_code)
+def validate_stream_request(messages: list, model: str | None = None) -> dict[str, Any]:
+    """流式请求的前置校验：模态检测 + 能力表。
 
-    data = resp.json()
-    choices = data.get("choices") or [{}]
-    return {
-        "model": data.get("model") or payload["model"],
-        "content": (choices[0].get("message") or {}).get("content", ""),
-        "usage": data.get("usage"),
-        "latency_ms": int((time.perf_counter() - started) * 1000),
-    }
+    流式链路只走 OpenAI 兼容门，无法表达 Gemini 原生门，
+    所以视频输入在这里直接抛 400，避免「正常返回但模型根本没看到视频」的静默失败。
+    图片可正常透传，不拦截。
+    """
+    model_id = model or llm_settings().model
+    required = _detect_modalities(messages)
+    cap = _validate_capability(model_id, required)
+    if "video" in required:
+        raise ServiceError(
+            f"流式接口暂不支持视频输入（模型 {model_id}），请改用非流式 /api/llm/chat",
+            400,
+        )
+    return cap
 
 
 async def chat_stream(
@@ -415,40 +533,21 @@ async def list_models() -> list[dict[str, Any]]:
             continue
         
         model_id = str(m["id"])
-        capabilities = _detect_capabilities(model_id)
+        cap = get_capability(model_id)
         
         models.append({
             "id": model_id,
-            "name": model_id,  # 可选：从上游解析更友好的名称
-            "capabilities": capabilities
+            "name": model_id,
+            "capabilities": cap["modalities"],
+            "provider": cap["provider"],
+            "videoEndpoint": cap["video_endpoint"],
+            "note": cap["note"],
+            "registered": cap["registered"],
         })
     
     return models
 
 
-def _detect_capabilities(model_id: str) -> list[str]:
-    """根据模型 ID 检测其支持的能力。"""
-    model_lower = model_id.lower()
-    capabilities = ["text"]  # 所有模型默认支持文本
-    
-    # 图像理解能力检测
-    vision_keywords = [
-        "vision", "vlm", "claude-3", "gemini", "qwen-vl", 
-        "deepseek-v", "gpt-4-turbo", "gpt-4-vision", "gpt-4o"
-    ]
-    if any(kw in model_lower for kw in vision_keywords):
-        if "image" not in capabilities:
-            capabilities.append("image")
-    
-    # 视频理解能力检测（未来扩展）
-    video_keywords = [
-        "video", "gemini-1.5", "gpt-4o"
-    ]
-    if any(kw in model_lower for kw in video_keywords):
-        if "video" not in capabilities:
-            capabilities.append("video")
-    
-    return capabilities
 
 
 async def probe() -> dict[str, Any]:

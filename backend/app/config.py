@@ -19,16 +19,21 @@ CONFIG_JSON = ROOT_DIR / "config.json"
 
 
 def _load_dotenv(path: Path) -> None:
-    """极简 .env 解析：不覆盖已存在的环境变量，避免污染 CI/生产注入。"""
+    """解析 .env：若环境变量不存在或为空串，则载入 .env 中的值。支持 utf-8-sig 去除 BOM。"""
     if not path.exists():
         return
-    for raw in path.read_text(encoding="utf-8").splitlines():
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except Exception:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
         key, value = key.strip(), value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
+        # 若系统环境变量未设置或为空，则采用 .env 中的值
+        if key and (key not in os.environ or not os.environ[key].strip()):
             os.environ[key] = value
 
 
